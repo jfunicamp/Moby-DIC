@@ -16,6 +16,7 @@ projects' websites.
 | Pillow | MIT-CMU (HPND) | image reading and writing |
 | Matplotlib (with contourpy, cycler, kiwisolver, fonttools, pyparsing, python-dateutil) | Matplotlib License (PSF-based), BSD, MIT | static figures |
 | natsort | MIT | natural sorting of file names |
+| OpenCV (opencv-python-headless) | Apache-2.0; its video module loads FFmpeg from a separate DLL (`opencv_videoio_ffmpeg`), built by the OpenCV project under the LGPL-2.1 without GPL components | reading video files (frame extraction) |
 | muDIC (optional) | MIT | global FE-DIC backend, only if installed |
 | PyInstaller bootloader | GPL-2.0-or-later with the PyInstaller bootloader exception (allows distribution of the generated executable under any license) | executable packaging |
 

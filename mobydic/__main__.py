@@ -6,6 +6,7 @@
     Moby-DIC mudic ...            backend muDIC (Q4 / B-spline), se instalado
     Moby-DIC viewer PASTA ...     (re)gera o visualizador de uma pasta de resultados
     Moby-DIC example [NOME]       gera imagens sintéticas de exemplo (tutoriais)
+    Moby-DIC video ARQUIVO ...    recomenda o trecho do ensaio num vídeo e extrai os quadros
     Moby-DIC --version
 """
 
@@ -24,6 +25,7 @@ AJUDA_EN = """Moby-DIC entry point.
     Moby-DIC mudic ...            muDIC backend (Q4 / B-spline), if installed
     Moby-DIC viewer FOLDER ...    (re)builds the viewer of a result folder
     Moby-DIC example [NAME]       generates synthetic example images (tutorials)
+    Moby-DIC video FILE ...       recommends the test interval of a video and extracts the frames
     Moby-DIC --version
 
 Set MOBYDIC_LANG=en or pt to choose the language of messages and figures.
@@ -55,6 +57,9 @@ def main(argv=None):
         return m(resto)
     if cmd == "viewer":
         from .viewer import main as m
+        return m(resto)
+    if cmd == "video":
+        from .video import main as m
         return m(resto)
     if cmd in ("example", "exemplo"):
         from .exemplos import main as m

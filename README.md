@@ -6,7 +6,7 @@
 Correlação digital de imagens 2D para ensaios mecânicos</p>
 
 <p align="center">
-Version 1.0.0 · MIT License · Windows executable or Python 3.10+ · English / Português
+Version 1.1.0 · MIT License · Windows executable or Python 3.10+ · English / Português
 </p>
 
 [English](#english) · [Português](#português)
@@ -34,6 +34,10 @@ can share.
 - **True strains** from local plane fitting, plus principal strains, maximum shear, von Mises
   equivalent strain, area change, contraction ratio, plastic anisotropy r, rotation,
   frame-to-frame increments and correlation quality.
+- **Images or video**: load an image sequence or a video of the test; for videos, Moby-DIC recommends
+  the test interval (stopping before fracture) and the number of frames to extract.
+- **Digital extensometer**: strain between two material points over the test, picked on the map or
+  suggested automatically, plotted against frame or video time and exported to CSV.
 - **Interactive viewer** in a single HTML file: 1/2/4 synchronised panels, 18 fields, 13 colormaps,
   adjustable scales, zoom, animation; export of figures (PNG), frame series (ZIP) and videos.
 - **Open outputs**: NumPy archive and CSV tables of all fields, static figures, full parameter
@@ -43,7 +47,7 @@ can share.
 
 ### Get started
 
-**Windows (no Python needed):** download and unzip `Moby-DIC-1.0.0-windows-x64.zip`, run
+**Windows (no Python needed):** download and unzip `Moby-DIC-1.1.0-windows-x64.zip`, run
 `Moby-DIC\Moby-DIC.exe`, choose your language, and click **Try an example**. The folder also
 contains `Moby-DIC-tutorial.mp4`, a 4-minute narrated walkthrough.
 
@@ -128,11 +132,13 @@ que pode ser compartilhado.
 - **DIC por subsets** preciso e robusto: IC-GN, ZNSSD, subsets afins, interpolação B-spline cúbica,
   atualização automática da referência, rejeição de falsos casamentos, recuperação e resgate de
   pontos, detecção de saltos rígidos e igualação de nitidez.
+- **Imagens ou vídeo** do ensaio (com recomendação automática do trecho e do número de quadros) e
+  **extensômetro digital** entre dois pontos.
 - **Deformações verdadeiras** e grandezas derivadas; **visualizador** com 18 campos, 13 colormaps,
   zoom, animação e exportação de figuras, quadros e vídeos.
 - Interface, mensagens e figuras em **português ou inglês** (escolhido no primeiro uso).
 
-**Para começar no Windows:** descompacte `Moby-DIC-1.0.0-windows-x64.zip`, abra
+**Para começar no Windows:** descompacte `Moby-DIC-1.1.0-windows-x64.zip`, abra
 `Moby-DIC\Moby-DIC.exe`, escolha o idioma e clique em **Experimentar um exemplo**. O vídeo
 `Moby-DIC-tutorial.mp4` (em inglês) mostra uma análise completa em 4 minutos.
 

@@ -11,6 +11,7 @@ moby-dic subsets ...         subset DIC
 moby-dic viewer FOLDER ...   (re)build the viewer of a result
 moby-dic mudic ...           muDIC backend (if installed)
 moby-dic example [NAME]      generate a synthetic example dataset
+moby-dic video FILE ...      recommend the test interval of a video and extract its frames
 moby-dic --version | --help
 ```
 
@@ -70,6 +71,16 @@ moby-dic example                       # list the examples
 moby-dic example necking               # writes Documents\Moby-DIC\examples\necking
 moby-dic example all --output D:\tmp   # all examples in another folder
 ```
+
+## video
+
+```bash
+moby-dic video test.mp4                                   # print the automatic recommendation
+moby-dic video test.mp4 --output frames                   # extract with the recommended values
+moby-dic video test.mp4 --output frames --start 12.5 --end 340 --frames 200
+```
+
+The frame folder can then be analysed with `moby-dic subsets --images frames ...`.
 
 ## Batch processing
 

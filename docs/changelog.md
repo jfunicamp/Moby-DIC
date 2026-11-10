@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0 — 2026-11-10
+
+- **Video input**: step 1 has a *Video file* tab. Moby-DIC measures the motion along the video and
+  recommends the test interval (start, end, stopping before fracture) and the number of frames;
+  the frames are extracted to PNG with their times (`frames.csv`). Command `moby-dic video`.
+- **Digital extensometer** in the viewer: two material points picked in the initial frame (or an
+  automatic suggestion) give the engineering and true strain over the test, plotted against frame
+  or video time, drawn on the maps and exported to CSV.
+- The source launcher `Moby-DIC.bat` creates its Python environment on the first run.
+
 ## 1.0.0 — 2026-11-10
 
 First public release.

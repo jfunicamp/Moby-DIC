@@ -18,6 +18,10 @@ specialist, while every choice stays visible and adjustable for those who are.
 - **True (logarithmic) strains** from a local plane fit, plus principal strains, maximum shear, von
   Mises equivalent strain, area change, contraction ratio, plastic anisotropy (r), rotation,
   frame-to-frame increments and correlation quality.
+- **Images or video**: an image sequence, or a video of the test from which Moby-DIC recommends the
+  test interval and the number of frames to extract.
+- **Digital extensometer**: the strain between two material points over the whole test, picked on
+  the map or suggested automatically.
 - **Interactive viewer** (one self-contained HTML file per result): 1, 2 or 4 synchronised panels,
   18 fields, 13 colormaps, adjustable colour scales, zoom, animation, and export of figures, image
   series and videos. It can be sent to colleagues and opened in any browser.
@@ -45,6 +49,6 @@ Moby-DIC is distributed under the **MIT License**: you may use, modify and redis
 including in commercial work, provided the copyright notice is kept. If Moby-DIC contributes to a
 publication, please cite it (see `CITATION.cff` in the source distribution):
 
-> João Felipe. *Moby-DIC: 2D digital image correlation for mechanical testing*, version 1.0.0, 2026.
+> João Felipe. *Moby-DIC: 2D digital image correlation for mechanical testing*, version 1.1.0, 2026.
 
 Third-party components and their licences are listed in `THIRD_PARTY_NOTICES.md`.

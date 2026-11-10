@@ -42,6 +42,30 @@ Tips:
   frames, elastic range with noise). Read them where the strain is well above the noise level.
 - **ZNCC** maps reveal where the speckle is poor, out of focus or damaged.
 
+## Digital extensometer
+
+The **Digital extensometer** panel below the maps measures the strain between two material points,
+like a clip-on extensometer, over the whole test.
+
+- **Automatic suggestion** (applied when the viewer opens): a line along the loading direction x,
+  on the grid row closest to the centre that is measured in (almost) every frame, spanning the
+  middle half of the measured width.
+- **Pick two points**: the initial frame is selected; click point A and then point B on any map.
+  Points must lie inside the region measured in the initial frame.
+- **Measure**: L (distance between the points), or only its x or y component.
+- The two points are tracked as **material points** with the measured displacement field (bilinear
+  interpolation of the DIC grid), so the gauge follows the specimen. The plot shows the engineering
+  strain ε = L/L₀ − 1 against the frame number, or against time when the frames were extracted from a
+  video; the summary line gives L₀, ε and the true strain ln(L/L₀) at the current frame.
+- The gauge is drawn on every panel with its current value, and is included in exported figures,
+  image series and videos.
+- **Download CSV**: frame, file, time, L, engineering and true strain, with the point coordinates in
+  the header.
+
+A long gauge gives the average (global) strain, comparable with a mechanical extensometer; a short
+gauge across a neck or a band gives the local strain there. Frames where one of the points is not
+measured are left as gaps.
+
 ## Colour scales
 
 For each panel:

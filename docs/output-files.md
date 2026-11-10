@@ -18,6 +18,14 @@ Each analysis writes one folder. File names are the same in both interface langu
 
 Together, `parametros.json` and `config_analise.json` are enough to reproduce an analysis.
 
+### Frames extracted from a video
+
+| File (frame folder) | Content |
+|---|---|
+| `frame_0001.png` … | extracted frames, 8-bit grey |
+| `frames.csv` | per frame: index, file, frame number in the video, time (s) |
+| `video_source.json` | video path, frame rate, start/end time, number of frames, codec |
+
 ## campos.npz
 
 Arrays are indexed `[frame, row, column, ...]`. Rows run along y and columns along x of the

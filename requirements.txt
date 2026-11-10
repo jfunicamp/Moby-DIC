@@ -8,3 +8,4 @@ natsort==8.4.0
 matplotlib==3.9.4
 scikit-image==0.24.0
 markdown==3.11.3
+opencv-python-headless==4.11.0.86

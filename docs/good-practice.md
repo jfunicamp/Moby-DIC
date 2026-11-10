@@ -63,7 +63,7 @@ parameter. The recommendations below summarise the iDICs *Good Practices Guide* 
 
 | Item | Example |
 |---|---|
-| Software and version | Moby-DIC 1.0.0, subset DIC (IC-GN, ZNSSD, affine, cubic B-spline) |
+| Software and version | Moby-DIC 1.1.0, subset DIC (IC-GN, ZNSSD, affine, cubic B-spline) |
 | Camera, lens, resolution, scale | 5 MP, 100 mm macro, 1.76 µm/px |
 | Speckle technique and size | airbrushed black on white, 4 px |
 | Subset, step, strain window, VSG | 25 px, 5 px, 5 points, 45 px (79 µm) |

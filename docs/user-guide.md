@@ -42,6 +42,32 @@ consecutive images of a slow test, and the run time is proportional to the numbe
 No images at hand? The card **Try an example** generates one of the synthetic datasets used in the
 tutorials.
 
+### Loading a video instead of images
+
+The **Video file** tab of step 1 accepts the test recorded as a video (MP4, AVI, MOV, MKV, WMV,
+M4V, MPG, WebM, MTS). Click a video (🎬) in the folder list and Moby-DIC reads it and measures the
+motion along the recording:
+
+- **Test interval** (automatic): the video is sampled at ~60 instants and, between consecutive
+  instants, the displacement of the fastest-moving region is measured (phase correlation on a 4 × 4
+  grid of blocks, 90th percentile). The interval runs from the first to the last instant with motion
+  above the noise level, refined with denser sampling at both ends. When the last motion is a
+  sudden jump much larger than the rest (**fracture**: the two halves spring apart), the interval
+  ends just before it. The motion curve is plotted with the chosen interval in green.
+- **Frames to extract** (automatic): one frame every ≈ 5 px of motion of the fastest region, between
+  40 and 300 and never more than the frames available in the interval. The interval between frames
+  in seconds and the number of available frames are shown.
+- Untick *Automatic* to type the start and end times (s) or the number of frames.
+
+**Extract frames and continue** writes the frames as 8-bit grey PNG images to
+`<working folder>\videos\<video name>_frames`, together with `frames.csv` (the time of every
+frame in the video) and `video_source.json`, and opens them in the image tab as a normal sequence.
+The viewer then uses the video time on the horizontal axis of the extensometer plot.
+
+> Video compression (H.264, HEVC, MJPEG…) removes fine speckle detail and adds artefacts that
+> increase DIC noise. When you can choose, record image sequences (TIFF/PNG) or lossless video, at
+> the highest resolution and the lowest frame rate the test needs.
+
 ## 2. Scale
 
 The scale converts pixels to micrometres and should come from a calibration of your set-up: an

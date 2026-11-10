@@ -1,7 +1,7 @@
 """Moby-DIC · gera um visualizador HTML autocontido (abre direto no navegador) para uma pasta de resultados.
 
-Armazena ux, uy, εxx, εyy, εxy, a rotação ω e, quando disponível, a ZNCC por ponto
-(qualidade_subsets.npz). Os campos são
+Armazena ux, uy, εxx, εyy, εxy e, quando disponíveis, a rotação ω (campos_extra.npz de
+campos_camadas.py) e a ZNCC por ponto (qualidade_subsets.npz de dic_subsets.py). Os campos são
 interpolados numa grade regular na configuração deformada, quantizados em 12 bits, codificados por
 diferença entre quadros e comprimidos com gzip dentro do HTML; as imagens de fundo entram como JPEG.
 
@@ -121,13 +121,20 @@ def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", 
     X0, Y0 = pos[0, 0, 0, 0], pos[0, 0, 0, 1]
     dX = pos[0, 0, 1, 0] - X0 if nx > 1 else 1.0
     dY = pos[0, 1, 0, 1] - Y0 if ny > 1 else 1.0
+    # Trajetórias lagrangianas para o extensômetro digital: deslocamento de cada nó da grade de
+    # medição (subamostrada se for densa) em 1/64 px, codificado por diferença entre quadros.
+    sub = max(1, int(np.ceil(np.sqrt(nx * ny / 6000))))
+    trilha = np.zeros((n, len(range(0, ny, sub)), len(range(0, nx, sub)), 2), dtype=np.float64)
+    mtr = np.zeros(trilha.shape[:3], dtype=np.uint8)
     for t in range(n):
         v = val[t]
         if v.sum() < 3:
             continue
+        mtr[t] = v[::sub, ::sub]
         # Inversão x = X + u(X) por ponto fixo no campo de deslocamento contínuo (inválidos
         # preenchidos pelos vizinhos); depois amostra os campos na grade de referência.
         d = preencher(pos[t] - pos[0], v)
+        trilha[t] = d[::sub, ::sub]
         cx, cy = (GX - X0) / dX, (GY - Y0) / dY
         for _ in range(12):
             ux = nd.map_coordinates(d[..., 0], [cy, cx], order=1, mode="nearest")
@@ -145,9 +152,19 @@ def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", 
     delta = np.diff(quant, axis=1, prepend=0).astype("<i2").view("<u2")
     planos = np.concatenate([(delta >> 8).astype(np.uint8).ravel(), (delta & 255).astype(np.uint8).ravel()])
     blob = b64(gzip.compress(planos.tobytes(), compresslevel=9))
+    qt = np.round(np.nan_to_num(trilha) * 64).astype(np.int64)
+    dq = np.clip(np.diff(qt, axis=0, prepend=0), -32768, 32767).astype("<i2")
+    blob_trilhas = b64(gzip.compress(dq.tobytes() + mtr.tobytes(), compresslevel=9))
 
     pasta_img = Path(meta["pasta_imagens"])
     por_nome = {p.name: p for p in listar_imagens(pasta_img)}
+    tempos = None                     # quadros extraídos de vídeo: tempo de cada quadro (frames.csv)
+    if (pasta_img / "frames.csv").exists():
+        import csv as _csv
+        with (pasta_img / "frames.csv").open(encoding="utf-8") as f:
+            t_por_nome = {r["arquivo"]: float(r["tempo_s"]) for r in _csv.DictReader(f)}
+        if all(a in t_por_nome for a in arquivos):
+            tempos = [t_por_nome[a] for a in arquivos]
     topo, base = int(altura_img - 1 - y1), int(altura_img - 1 - y0)
     esq, dir_ = int(x0), int(x1)
     fator = largura_fundo / (dir_ - esq + 1)
@@ -173,9 +190,13 @@ def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", 
         "armazenados": [{"id": k, "lo": faixas[k][0], "hi": faixas[k][1]} for k in ids],
         "luts": luts, "cmaps": COLORMAPS, "cmap_padrao": cmap_padrao, "idioma_padrao": idioma,
         "niveis": NIVEIS, "estado": estados_z,
+        "trilhas": {"nx": trilha.shape[2], "ny": trilha.shape[1], "x0": float(X0), "y0": float(Y0),
+                    "dx": float(dX * sub), "dy": float(dY * sub)},
+        "tempos": tempos,
     }
     html = MODELO.replace("__DADOS__", json.dumps(dados, ensure_ascii=False)) \
                  .replace("__BLOB__", blob).replace("__FUNDOS__", json.dumps(fundos)) \
+                 .replace("__TRILHAS__", blob_trilhas) \
                  .replace("__TITULO__", f"{NOME} · {amostra}")
     destino = pasta / "visualizador.html"
     destino.write_text(html, encoding="utf-8")
@@ -230,6 +251,9 @@ details.exportar summary{cursor:pointer;font-weight:600}
 .exp .lin{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:8px}
 .nota{color:var(--muted);font-size:12.5px}
 progress{width:100%;height:10px}
+.ext{margin-top:10px}.ext .lin{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:6px}
+.extStatus{font-size:13.5px;font-variant-numeric:tabular-nums;min-height:1.4em;margin:4px 0}
+.extGraf{width:100%;height:240px;display:block;border:1px solid var(--line);border-radius:8px;background:var(--card)}
 #status{font-size:13px;color:var(--muted);margin-top:6px;min-height:1.3em}
 </style>
 </head>
@@ -264,6 +288,17 @@ progress{width:100%;height:10px}
 <div class="grade l4" id="grade"></div>
 <div class="leitura" id="leitura"></div>
 <div class="dica" id="dica"></div>
+<details class="exportar" id="painelExt" open>
+  <summary data-t="ext"></summary>
+  <div class="ext">
+    <div class="lin"><button id="extAuto" data-t="extAuto"></button><button id="extMarcar" data-t="extMarcar"></button>
+      <button id="extLimpar" data-t="extLimpar"></button><button id="extCSV" data-t="extCSV"></button>
+      <label><span data-t="extComp"></span> <select id="extComp"><option value="d">L</option><option value="x">x</option><option value="y">y</option></select></label></div>
+    <p class="nota" data-t="extNota"></p>
+    <div id="extStatus" class="extStatus"></div>
+    <canvas id="extGraf" class="extGraf"></canvas>
+  </div>
+</details>
 <details class="exportar" id="painelExportar">
   <summary data-t="exportar"></summary>
   <div class="exp">
@@ -306,6 +341,7 @@ progress{width:100%;height:10px}
 const D = __DADOS__;
 const FUNDOS = __FUNDOS__;
 const BLOB = "__BLOB__";
+const TRILHAS = "__TRILHAS__";
 const N = D.n, W = D.W, H = D.H;
 
 // ---------------------------------------------------------------- textos
@@ -326,7 +362,12 @@ const TXT = {
     estados:{referencia:"referência", convergiu:"convergiu", quadro_ruim:"quadro ruim", nao_convergiu:"não convergiu"},
     grupos:{desl:"Deslocamentos", def:"Deformações", der:"Grandezas derivadas", taxa:"Incrementos entre quadros", qual:"Qualidade da medição"},
     zoom:"Zoom", zoomMaisTip:"Aproximar (ou roda do mouse sobre um mapa)", zoomMenosTip:"Afastar", ajustar:"ajustar",
-    ajustarTip:"Mostrar a região inteira (ou duplo clique no mapa)", dicaZoom:"Roda do mouse: zoom · arrastar: mover · duplo clique: ajustar."},
+    ajustarTip:"Mostrar a região inteira (ou duplo clique no mapa)", dicaZoom:"Roda do mouse: zoom · arrastar: mover · duplo clique: ajustar.",
+    ext:"Extensômetro digital", extAuto:"Sugestão automática", extMarcar:"Marcar dois pontos", extLimpar:"Remover", extCSV:"Baixar CSV",
+    extComp:"Medir", extNota:"Deformação de engenharia entre dois pontos materiais marcados no quadro inicial, como um extensômetro de contato: ε = L/L₀ − 1 (L = distância entre os pontos; x ou y = só a componente nessa direção). Sugestão automática: linha na direção x, no centro da região medida, com metade da largura.",
+    extA:"Clique no primeiro ponto (A) num mapa. O quadro inicial foi selecionado.", extB:"Agora clique no segundo ponto (B).", extFora:"Ponto fora da região medida no quadro inicial; escolha outro.",
+    extVazio:"Nenhum extensômetro. Use a sugestão automática ou marque dois pontos.", extSem:"Este visualizador não tem as trajetórias dos pontos; gere-o de novo com o Moby-DIC 1.1 ou mais recente.",
+    extResumo:(L0, u, e, et, tt) => `L₀ = ${L0} ${u} · ${T("quadro")} ${tt}: ε = ${e} % (verdadeira ${et} %)`, eixoQ:"quadro", eixoT:"tempo (s)", extEixoY:"ε extensômetro (%)"},
   en: {idioma:"Language", layout:"Panels", anterior:"Previous frame (←)", proximo:"Next frame (→)", playTip:"Play/pause (space)",
     play:"▶ Play", pausa:"❚❚ Pause", velocidade:"Speed", qps:"frames/s", repetir:"loop", opacidade:"Opacity",
     imagem:"image", cores:"Colormap", inverter:"reverse", carregando:"Decompressing data…", falha:"Could not decompress the data: ",
@@ -343,7 +384,12 @@ const TXT = {
     estados:{referencia:"reference", convergiu:"converged", quadro_ruim:"bad frame", nao_convergiu:"not converged"},
     grupos:{desl:"Displacements", def:"Strains", der:"Derived quantities", taxa:"Frame-to-frame increments", qual:"Measurement quality"},
     zoom:"Zoom", zoomMaisTip:"Zoom in (or mouse wheel over a map)", zoomMenosTip:"Zoom out", ajustar:"fit",
-    ajustarTip:"Show the whole region (or double-click the map)", dicaZoom:"Mouse wheel: zoom · drag: pan · double-click: fit."},
+    ajustarTip:"Show the whole region (or double-click the map)", dicaZoom:"Mouse wheel: zoom · drag: pan · double-click: fit.",
+    ext:"Digital extensometer", extAuto:"Automatic suggestion", extMarcar:"Pick two points", extLimpar:"Remove", extCSV:"Download CSV",
+    extComp:"Measure", extNota:"Engineering strain between two material points picked in the initial frame, like a clip-on extensometer: ε = L/L₀ − 1 (L = distance between the points; x or y = only that component). Automatic suggestion: a line along x, centred in the measured region, half its width long.",
+    extA:"Click the first point (A) on a map. The initial frame has been selected.", extB:"Now click the second point (B).", extFora:"Point outside the region measured in the initial frame; pick another one.",
+    extVazio:"No extensometer. Use the automatic suggestion or pick two points.", extSem:"This viewer has no point tracks; rebuild it with Moby-DIC 1.1 or later.",
+    extResumo:(L0, u, e, et, tt) => `L₀ = ${L0} ${u} · ${T("quadro")} ${tt}: ε = ${e} % (true ${et} %)`, eixoQ:"frame", eixoT:"time (s)", extEixoY:"extensometer ε (%)"},
 };
 let L = "pt";
 try { L = localStorage.getItem("dic_idioma") || D.idioma_padrao || "pt"; } catch(e) { L = D.idioma_padrao || "pt"; }
@@ -454,6 +500,123 @@ function estatisticas(k){
 const escala = new Array(NC);
 function escalaDe(k){ if (!escala[k]){ const e = estatisticas(k); escala[k] = {min: e.min, max: e.max, sim: !!CAMPOS[k].sim}; } return escala[k]; }
 
+// ---------------------------------------------------------------- extensômetro digital
+const TR = D.trilhas, FE = D.calibrado ? D.escala_um_px/1000 : 1;   // px -> unidade dos eixos
+let TRD = null, TRM = null;
+const EXT = {A: null, B: null, marcando: 0, serie: null, L0: 0, comp: "d"};
+async function descompactarTrilhas(){
+  if (!TR || !TRILHAS || TRILHAS.startsWith("__")) return;
+  const bin = Uint8Array.from(atob(TRILHAS), ch => ch.charCodeAt(0));
+  const b = new Uint8Array(await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+  const nn = TR.nx*TR.ny, q = new Int16Array(b.buffer, 0, N*nn*2);
+  TRD = new Float32Array(N*nn*2); TRM = b.subarray(N*nn*4);
+  const acc = new Int32Array(nn*2);
+  for (let tt = 0; tt < N; tt++) for (let i = 0; i < nn*2; i++){ acc[i] += q[tt*nn*2 + i]; TRD[tt*nn*2 + i] = acc[i]/64; }
+}
+// deslocamento (px) do ponto material de posição inicial (x, y) px no quadro tt; null se não medido
+function deslocPonto(x, y, tt){
+  if (!TRD || TR.nx < 2 || TR.ny < 2) return null;
+  const fx = (x - TR.x0)/TR.dx, fy = (y - TR.y0)/TR.dy;
+  if (fx < 0 || fy < 0 || fx > TR.nx - 1 || fy > TR.ny - 1) return null;
+  const c0 = Math.min(TR.nx - 2, Math.floor(fx)), r0 = Math.min(TR.ny - 2, Math.floor(fy)), a = fx - c0, b = fy - r0;
+  let ux = 0, uy = 0;
+  for (const [dr, dc, w] of [[0, 0, (1-a)*(1-b)], [0, 1, a*(1-b)], [1, 0, (1-a)*b], [1, 1, a*b]]){
+    const i = (tt*TR.ny + r0 + dr)*TR.nx + c0 + dc;
+    if (w > 1e-9 && !TRM[i]) return null;
+    ux += w*TRD[2*i]; uy += w*TRD[2*i + 1];
+  }
+  return [ux, uy];
+}
+function calcularExt(){
+  EXT.serie = null; if (!EXT.A || !EXT.B) return;
+  const [ax, ay] = EXT.A, [bx, by] = EXT.B, comp = EXT.comp;
+  const L = (p, q) => comp === "x" ? Math.abs(q[0] - p[0]) : comp === "y" ? Math.abs(q[1] - p[1]) : Math.hypot(q[0] - p[0], q[1] - p[1]);
+  EXT.L0 = L([ax, ay], [bx, by]);
+  EXT.serie = Array.from({length: N}, (_, tt) => { const da = deslocPonto(ax, ay, tt), db = deslocPonto(bx, by, tt);
+    if (!da || !db || !(EXT.L0 > 0)) return NaN; return L([ax + da[0], ay + da[1]], [bx + db[0], by + db[1]])/EXT.L0 - 1; });
+}
+function sugerirExt(){
+  if (!TRD) return;
+  // linha de nós com mais quadros medidos, perto do centro; trecho medido em todos (ou quase todos) os quadros
+  const conta = new Int32Array(TR.nx*TR.ny);
+  for (let tt = 0; tt < N; tt++) for (let i = 0; i < conta.length; i++) conta[i] += TRM[tt*conta.length + i];
+  let melhor = -1, rMelhor = 0;
+  for (let r = 0; r < TR.ny; r++){ let s = 0; for (let c = 0; c < TR.nx; c++) s += conta[r*TR.nx + c] >= 0.95*N ? 1 : 0;
+    const pena = Math.abs(r - (TR.ny - 1)/2)/TR.ny; const nota = s*(1 - pena); if (nota > melhor){ melhor = nota; rMelhor = r; } }
+  const ok = []; for (let c = 0; c < TR.nx; c++) if (conta[rMelhor*TR.nx + c] >= 0.95*N) ok.push(c);
+  if (ok.length < 4) return;
+  const c1 = ok[0], c2 = ok[ok.length - 1], y = TR.y0 + rMelhor*TR.dy;
+  EXT.A = [TR.x0 + (c1 + 0.25*(c2 - c1))*TR.dx, y]; EXT.B = [TR.x0 + (c1 + 0.75*(c2 - c1))*TR.dx, y];
+  EXT.marcando = 0; calcularExt(); desenhar();
+}
+function marcarExt(mm){
+  const px = [mm.x/FE, mm.y/FE];
+  if (!deslocPonto(px[0], px[1], 0)){ document.getElementById("extStatus").textContent = T("extFora"); return; }
+  if (EXT.marcando === 1){ EXT.A = px; EXT.B = null; EXT.serie = null; EXT.marcando = 2; }
+  else { EXT.B = px; EXT.marcando = 0; calcularExt(); }
+  desenhar();
+}
+// sobreposição nos mapas (tela e figuras exportadas)
+function desenharExtEm(ctx, g, tt, fs){
+  if (!EXT.A) return;
+  const vw = V.x1 - V.x0, vh = V.y1 - V.y0;
+  const tela = p => { const d = deslocPonto(p[0], p[1], tt) || [NaN, NaN];
+    return [g.X + ((p[0] + d[0])*FE - V.x0)/vw*g.pw, g.Y + g.ph - ((p[1] + d[1])*FE - V.y0)/vh*g.ph]; };
+  const pts = [EXT.A, EXT.B].filter(Boolean).map(tela);
+  ctx.save(); ctx.beginPath(); ctx.rect(g.X, g.Y, g.pw, g.ph); ctx.clip();
+  if (pts.length === 2 && pts.every(p => isFinite(p[0]))){
+    ctx.strokeStyle = "rgba(0,0,0,.75)"; ctx.lineWidth = 4*fs; ctx.beginPath(); ctx.moveTo(...pts[0]); ctx.lineTo(...pts[1]); ctx.stroke();
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2*fs; ctx.setLineDash([6*fs, 4*fs]); ctx.beginPath(); ctx.moveTo(...pts[0]); ctx.lineTo(...pts[1]); ctx.stroke(); ctx.setLineDash([]);
+  }
+  pts.forEach((p, j) => { if (!isFinite(p[0])) return;
+    ctx.fillStyle = "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5*fs; ctx.beginPath(); ctx.arc(p[0], p[1], 5*fs, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#111"; ctx.font = `700 ${11*fs}px system-ui,sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    ctx.lineWidth = 3*fs; ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.strokeText(j ? "B" : "A", p[0], p[1] - 7*fs); ctx.fillText(j ? "B" : "A", p[0], p[1] - 7*fs); });
+  if (EXT.serie && pts.length === 2 && isFinite(EXT.serie[tt])){
+    const m = [(pts[0][0] + pts[1][0])/2, (pts[0][1] + pts[1][1])/2], txt = `ε = ${decimal((100*EXT.serie[tt]).toFixed(2))} %`;
+    ctx.font = `700 ${12*fs}px system-ui,sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.lineWidth = 3.5*fs; ctx.strokeStyle = "rgba(0,0,0,.8)"; ctx.strokeText(txt, m[0], m[1] + 8*fs); ctx.fillStyle = "#fff"; ctx.fillText(txt, m[0], m[1] + 8*fs);
+  }
+  ctx.restore();
+}
+function desenharGrafExt(){
+  const cv = document.getElementById("extGraf"), st = document.getElementById("extStatus"); if (!cv) return;
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth || 600, h = cv.clientHeight || 240;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr); const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const est = estiloTela(); ctx.fillStyle = est.bg; ctx.fillRect(0, 0, w, h);
+  if (!TRD){ st.textContent = T("extSem"); return; }
+  if (EXT.marcando){ st.textContent = EXT.marcando === 1 ? T("extA") : T("extB"); }
+  if (!EXT.serie){ if (!EXT.marcando) st.textContent = T("extVazio"); return; }
+  const xs = D.tempos || EXT.serie.map((_, i) => i), ys = EXT.serie.map(v => 100*v);
+  const fin = ys.filter(v => isFinite(v)); if (!fin.length) return;
+  const u = D.u_eixo, L0 = decimal((EXT.L0*FE).toFixed(D.calibrado ? 3 : 1)), e = ys[t], et = 100*Math.log1p(EXT.serie[t]);
+  st.textContent = T("extResumo")(L0, u, isFinite(e) ? decimal(e.toFixed(3)) : "—", isFinite(et) ? decimal(et.toFixed(3)) : "—", t);
+  const ml = 54, mr = 14, mt = 12, mb = 36, pw = w - ml - mr, ph = h - mt - mb;
+  let y0 = Math.min(0, ...fin), y1 = Math.max(0, ...fin); if (y1 - y0 < 1e-6) y1 = y0 + 1;
+  const pad = 0.06*(y1 - y0); y0 -= pad; y1 += pad;
+  const x0 = xs[0], x1 = xs[xs.length - 1] || 1, X = v => ml + (v - x0)/((x1 - x0) || 1)*pw, Y = v => mt + ph - (v - y0)/(y1 - y0)*ph;
+  ctx.strokeStyle = est.line; ctx.lineWidth = 1; ctx.strokeRect(ml + .5, mt + .5, pw, ph);
+  ctx.fillStyle = est.muted; ctx.font = "11px system-ui,sans-serif";
+  const py = passoEixo(y1 - y0), dy = casas(py); ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let v = Math.ceil(y0/py)*py; v <= y1; v += py){ ctx.fillRect(ml - 4, Y(v), 4, 1); ctx.fillText(decimal(v.toFixed(dy)), ml - 6, Y(v)); }
+  const px = passoEixo(x1 - x0), dx = casas(px); ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (let v = Math.ceil(x0/px)*px; v <= x1 + 1e-9; v += px){ ctx.fillRect(X(v), mt + ph, 1, 4); ctx.fillText(decimal(v.toFixed(dx)), X(v), mt + ph + 6); }
+  ctx.fillText(D.tempos ? T("eixoT") : T("eixoQ"), ml + pw/2, mt + ph + 20);
+  ctx.save(); ctx.translate(12, mt + ph/2); ctx.rotate(-Math.PI/2); ctx.textBaseline = "middle"; ctx.fillText(T("extEixoY"), 0, 0); ctx.restore();
+  ctx.strokeStyle = est.muted; ctx.globalAlpha = .4; ctx.beginPath(); ctx.moveTo(ml, Y(0)); ctx.lineTo(ml + pw, Y(0)); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--accent").trim() || "#2a6fdb"; ctx.lineWidth = 2; ctx.beginPath();
+  let novo = true; ys.forEach((v, i) => { if (!isFinite(v)){ novo = true; return; } if (novo){ ctx.moveTo(X(xs[i]), Y(v)); novo = false; } else ctx.lineTo(X(xs[i]), Y(v)); }); ctx.stroke();
+  if (isFinite(ys[t])){ ctx.fillStyle = "#d33"; ctx.beginPath(); ctx.arc(X(xs[t]), Y(ys[t]), 4, 0, 7); ctx.fill(); }
+}
+function csvExt(){
+  if (!EXT.serie) return;
+  const sep = ",", linhas = [["frame", "file", "time_s", `L_${D.u_eixo}`, "eng_strain_pct", "true_strain_pct"].join(sep)];
+  EXT.serie.forEach((e, i) => linhas.push([i, D.arquivos[i], D.tempos ? D.tempos[i] : "", isFinite(e) ? ((1 + e)*EXT.L0*FE).toFixed(6) : "",
+    isFinite(e) ? (100*e).toFixed(5) : "", isFinite(e) ? (100*Math.log1p(e)).toFixed(5) : ""].join(sep)));
+  const cab = `# Moby-DIC digital extensometer · ${D.amostra} · A = (${(EXT.A[0]*FE).toFixed(4)}, ${(EXT.A[1]*FE).toFixed(4)}) ${D.u_eixo}, B = (${(EXT.B[0]*FE).toFixed(4)}, ${(EXT.B[1]*FE).toFixed(4)}) ${D.u_eixo} in the initial frame (origin lower-left) · measure: ${EXT.comp}`;
+  baixar(new Blob([cab + "\n" + linhas.join("\n") + "\n"], {type: "text/csv"}), `${nomeBase()}_extensometer.csv`);
+}
+
 // ---------------------------------------------------------------- dados
 async function descompactar(){
   const bin = Uint8Array.from(atob(BLOB), ch => ch.charCodeAt(0));
@@ -533,6 +696,7 @@ function desenharPainelEm(ctx, x, y, w, k, tt, est, im){
   for (let j = 0; j <= 4; j++){ const v = s.max - j/4*(s.max - s.min), py = Y + j/4*(ph - 1);
     ctx.fillRect(bx + bw, py, 3*fs, fs); ctx.fillText(fmtEsc(v, s.max - s.min), bx + bw + 5*fs, py); }
   ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText(unidade(c), bx + bw/2, Y + ph + 6*fs);
+  desenharExtEm(ctx, {X, Y, pw, ph}, tt, fs);
   return {h: mt + ph + mb, X, Y, pw, ph};
 }
 function estiloTela(){ const cs = getComputedStyle(document.body);
@@ -583,7 +747,8 @@ function criarPainel(k0){
   p.mapa.addEventListener("mousemove", ev => { if (arraste) return; ler(ev, p); });
   p.mapa.addEventListener("wheel", ev => { if (!p.geo) return; ev.preventDefault();
     const mm = mmDoEvento(ev, p); zoomEm(ev.deltaY < 0 ? 1.25 : 0.8, mm.x, mm.y); }, {passive: false});
-  p.mapa.addEventListener("pointerdown", ev => { if (!p.geo || ev.button !== 0) return; p.mapa.setPointerCapture(ev.pointerId);
+  p.mapa.addEventListener("pointerdown", ev => { if (!p.geo || ev.button !== 0) return;
+    if (EXT.marcando){ if (t !== 0) irPara(0); marcarExt(mmDoEvento(ev, p)); return; } p.mapa.setPointerCapture(ev.pointerId);
     arraste = {x: ev.clientX, y: ev.clientY, v: {...V}, p}; p.mapa.style.cursor = "grabbing"; });
   p.mapa.addEventListener("pointermove", ev => { if (!arraste || arraste.p !== p) return; const g = p.geo;
     const dx = (ev.clientX - arraste.x)/g.pw*(arraste.v.x1 - arraste.v.x0), dy = (ev.clientY - arraste.y)/g.ph*(arraste.v.y1 - arraste.v.y0);
@@ -630,6 +795,7 @@ function desenharPainel(p){
 }
 function desenhar(){
   visiveis().forEach(desenharPainel);
+  desenharGrafExt();
   document.getElementById("quadro").value = t; document.getElementById("quadroNum").value = t;
   document.getElementById("nomeQuadro").textContent = `${D.arquivos[t]} · ${T("quadro")} ${t}/${N-1} · ${T("estados")[D.estado[t]] || D.estado[t]}`;
   for (let k = 1; k <= 3; k++) fundo(Math.min(N-1, t + k));
@@ -820,6 +986,11 @@ function contarExport(){
   document.getElementById("btnZip").onclick = exportarZip;
   document.getElementById("btnVideo").onclick = exportarVideo;
   document.getElementById("btnCancelar").onclick = () => { cancelar = true; };
+  document.getElementById("extAuto").onclick = sugerirExt;
+  document.getElementById("extMarcar").onclick = () => { parar(); EXT.marcando = 1; irPara(0); };
+  document.getElementById("extLimpar").onclick = () => { EXT.A = EXT.B = EXT.serie = null; EXT.marcando = 0; desenhar(); };
+  document.getElementById("extCSV").onclick = csvExt;
+  document.getElementById("extComp").onchange = e => { EXT.comp = e.target.value; calcularExt(); desenhar(); };
   document.addEventListener("keydown", ev => {
     if (["INPUT","SELECT"].includes(ev.target.tagName) && ev.target.type !== "range" && ev.target.type !== "checkbox") return;
     if (ev.key === " "){ ev.preventDefault(); tocando ? parar() : tocar(); }
@@ -829,7 +1000,7 @@ function contarExport(){
     else if (ev.key === "+" || ev.key === "="){ zoomEm(1.5); } else if (ev.key === "-"){ zoomEm(1/1.5); } else if (ev.key === "0"){ ajustarVista(); }
   });
   aplicarIdioma();
-  try { await descompactar(); }
+  try { await descompactar(); await descompactarTrilhas(); sugerirExt(); }
   catch(e){ document.getElementById("carregando").textContent = T("falha") + e; return; }
   document.getElementById("carregando").remove();
   montarLayout();

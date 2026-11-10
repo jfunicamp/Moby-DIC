@@ -104,6 +104,10 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .inicio{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:18px;text-align:left}
 .inicio button{text-align:left;padding:12px 14px;border-radius:12px}
 .inicio button b{display:block;margin-bottom:2px}.inicio button span{font-size:12.5px;color:var(--muted)}
+.abas{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap}
+.aba{border-radius:999px;padding:7px 16px;font-weight:600}
+.aba.sel{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+svg.atividade{width:100%;height:96px;display:block;margin-top:8px}
 .exemplos{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 </style>
 </head>
@@ -147,6 +151,9 @@ const S = {
   ref: {modo:"automatica", a_cada:2, zncc_ref:0.98, zncc_ref_p05:0.95, falha_ref:0.003, zncc_min:0.8, igualar:false, a_igualar:true, resgate:true, a_avancado:true},
   pos: {idioma:"pt", cmap:"jet", saida:"", a_saida:true, trabalho:""},
   resultado: null,
+  fonte: "imagens",                         // imagens | video
+  video: {arquivo:null, info:null, inicio:0, fim:0, n:40, a_trecho:true, a_n:true},
+  origemVideo: null,                        // {pasta, nome, inicio, fim, n}
 };
 const ETAPAS = () => [
   {t:tr("Imagens","Images"), d:tr("pasta e quadros","folder and frames"), f:etapaImagens},
@@ -218,7 +225,7 @@ function entradaNum(valor, {min, max, passo=1, desativada=false, aoMudar}){
   e.step = passo; e.disabled = desativada; e.onchange = () => aoMudar(+e.value); return e;
 }
 // Navegador de pastas reutilizável (lista + caminho). opcoes: {aoEntrar(r)}
-async function navegador(el, inicial, {aoEntrar} = {}){
+async function navegador(el, inicial, {aoEntrar, videos = false, aoVideo} = {}){
   el.innerHTML = `<div class="lin"><input type="text" class="nvCam"><button class="peq nvAbrir">${tr("Abrir","Open")}</button></div>
     <div class="lin nvAtalhos"></div><div class="lista nvLista"></div>`;
   const listar = async (caminho) => {
@@ -228,9 +235,15 @@ async function navegador(el, inicial, {aoEntrar} = {}){
       $(".nvAtalhos", el).innerHTML = (r.pai ? `<button class="peq" data-c="${encodeURIComponent(r.pai)}">↑ ${tr("Pasta acima","Up")}</button>` : "") +
         r.atalhos.map(a => `<button class="peq" data-c="${encodeURIComponent(a.caminho)}">${a.nome}</button>`).join("") +
         r.unidades.map(u => `<button class="peq" data-c="${encodeURIComponent(u)}">${u}</button>`).join("");
-      $(".nvLista", el).innerHTML = r.pastas.map(p => `<div data-c="${encodeURIComponent(p.caminho)}"><span>📁 ${p.nome}</span><span class="badge ${p.resultado ? "res" : p.n_imagens ? "img" : ""}">${p.resultado ? tr("resultado Moby-DIC","Moby-DIC result") : p.n_imagens ? p.n_imagens + " " + tr("imagens","images") : ""}</span></div>`).join("")
-        || `<div><span class="nota">${tr("sem subpastas","no subfolders")}</span></div>`;
+      const rotulo = p => videos ? (p.n_videos ? p.n_videos + " " + tr("vídeos","videos") : "")
+        : p.resultado ? tr("resultado Moby-DIC","Moby-DIC result") : p.n_imagens ? p.n_imagens + " " + tr("imagens","images") : "";
+      const classe = p => videos ? (p.n_videos ? "img" : "") : p.resultado ? "res" : p.n_imagens ? "img" : "";
+      $(".nvLista", el).innerHTML = (r.pastas.map(p => `<div data-c="${encodeURIComponent(p.caminho)}"><span>📁 ${p.nome}</span><span class="badge ${classe(p)}">${rotulo(p)}</span></div>`).join("")
+        + (videos ? (r.videos || []).map(v => `<div data-v="${encodeURIComponent(v.caminho)}"><span>🎬 ${v.nome}</span><span class="badge img">${num(v.mb, 1)} MB</span></div>`).join("") : ""))
+        || `<div><span class="nota">${videos ? tr("sem subpastas nem vídeos","no subfolders or videos") : tr("sem subpastas","no subfolders")}</span></div>`;
       el.querySelectorAll("[data-c]").forEach(d => d.onclick = () => listar(decodeURIComponent(d.dataset.c)));
+      el.querySelectorAll("[data-v]").forEach(d => d.onclick = () => { el.querySelectorAll("[data-v]").forEach(x => x.style.background = "");
+        d.style.background = "var(--soft)"; if (aoVideo) aoVideo(decodeURIComponent(d.dataset.v)); });
       if (aoEntrar) aoEntrar(r);
     } catch(e) { if (aoEntrar) aoEntrar({erro: e.message}); }
   };
@@ -250,8 +263,15 @@ function escolherPasta(titulo, inicial){
 }
 
 // ------------------------------------------------------------------ 1. imagens
+function htmlAbas(){
+  return `<div class="abas"><button class="aba ${S.fonte === "imagens" ? "sel" : ""}" data-f="imagens">🖼 ${tr("Pasta de imagens","Image folder")}</button>
+    <button class="aba ${S.fonte === "video" ? "sel" : ""}" data-f="video">🎬 ${tr("Arquivo de vídeo","Video file")}</button></div>`;
+}
+function ligarAbas(c){ c.querySelectorAll(".aba").forEach(b => b.onclick = () => { if (S.fonte !== b.dataset.f){ S.fonte = b.dataset.f; ir(0); } }); }
 async function etapaImagens(c){
-  c.innerHTML = `<div class="etapa"><h2>1. ${tr("Imagens","Images")}</h2><p class="lead">${tr("Escolha a pasta com a sequência de imagens do ensaio (PNG, TIFF 8/16 bits, BMP ou JPEG) e quais quadros entram na análise.","Choose the folder with the test image sequence (PNG, 8/16-bit TIFF, BMP or JPEG) and which frames to analyse.")}</p>
+  if (S.fonte === "video") return etapaVideo(c);
+  c.innerHTML = `<div class="etapa"><h2>1. ${tr("Imagens","Images")}</h2><p class="lead">${tr("Escolha a pasta com a sequência de imagens do ensaio (PNG, TIFF 8/16 bits, BMP ou JPEG) e quais quadros entram na análise, ou carregue um vídeo do ensaio na outra aba.","Choose the folder with the test image sequence (PNG, 8/16-bit TIFF, BMP or JPEG) and which frames to analyse, or load a video of the test in the other tab.")}</p>
+    ${htmlAbas()}
     <div class="grid2">
       <div class="card"><h3>${tr("Pasta","Folder")}</h3><div id="nav1"></div>
         <div class="nav"><span class="nota" id="nAqui"></span><button id="usar" class="prim peq" disabled>${tr("Usar esta pasta","Use this folder")}</button></div>
@@ -261,6 +281,7 @@ async function etapaImagens(c){
           <p class="nota">${tr("Sequências sintéticas com campo exato conhecido, as mesmas dos tutoriais da documentação. São gravadas na pasta de trabalho, em <code>examples</code>.","Synthetic sequences with a known exact field, the same ones used in the documentation tutorials. They are written to the working folder, under <code>examples</code>.")}</p>
           <div class="exemplos" id="listaEx"></div></div>`}</div>
     </div></div>`;
+  ligarAbas(c);
   const nav = navegacao($(".etapa", c), {voltar:false, antesProx: async () => !!S.info});
   $(".prox", nav).disabled = !S.info;
   await navegador($("#nav1"), S.info ? S.info.pasta : S.prefs.ultima_pasta, {aoEntrar: r => {
@@ -270,6 +291,115 @@ async function etapaImagens(c){
     $("#usar").onclick = async () => { S.sel = {inicio:1, fim:null, a_cada: r.n_imagens > 300 ? Math.ceil(r.n_imagens/250) : 1, auto:true}; S.roi.fonte = "auto"; S.feitas.clear(); await analisarPasta(r.caminho); };
   }});
   if (S.info) mostrarInfo(); else listarExemplos();
+}
+// ------------------------------------------------------------------ 1b. vídeo
+const fmtS = v => num(v, 2) + " s";
+async function etapaVideo(c){
+  const v = S.video;
+  c.innerHTML = `<div class="etapa"><h2>1. ${tr("Imagens","Images")}</h2><p class="lead">${tr("Carregue o vídeo do ensaio (MP4, AVI, MOV, MKV, WMV…). O Moby-DIC recomenda o trecho do ensaio e quantos quadros extrair; os quadros extraídos viram a sequência de imagens da análise.","Load the test video (MP4, AVI, MOV, MKV, WMV…). Moby-DIC recommends the test interval and how many frames to extract; the extracted frames become the image sequence of the analysis.")}</p>
+    ${htmlAbas()}
+    <div class="grid2">
+      <div class="card"><h3>${tr("Arquivo de vídeo","Video file")}</h3><div id="navV"></div>
+        <p class="nota">${tr("Clique num vídeo (🎬) para carregá-lo. O número em azul é a quantidade de vídeos da pasta.","Click a video (🎬) to load it. The blue number is the number of videos in the folder.")}</p></div>
+      <div class="card" id="cardVideo"><h3>${tr("Vídeo","Video")}</h3><p class="nota">${tr("Nenhum vídeo escolhido.","No video selected.")}</p></div>
+    </div></div>`;
+  ligarAbas(c);
+  const nav = navegacao($(".etapa", c), {voltar:false, antesProx: async () => !!S.info});
+  $(".prox", nav).disabled = !S.info;
+  await navegador($("#navV"), v.arquivo ? v.arquivo.replace(/[\\/][^\\/]*$/, "") : S.prefs.ultima_pasta, {videos:true, aoVideo: a => carregarVideo(a)});
+  if (v.info) mostrarVideo();
+}
+async function carregarVideo(arquivo){
+  const v = S.video; v.arquivo = arquivo; v.info = null;
+  $("#cardVideo").innerHTML = `<h3>${tr("Vídeo","Video")}</h3><p class="nota">${tr("Lendo o vídeo e medindo o movimento ao longo do ensaio…","Reading the video and measuring the motion along the test…")}</p>`;
+  try {
+    v.info = await api("/api/video/sugerir?arquivo=" + encodeURIComponent(arquivo));
+    v.a_trecho = true; v.a_n = true; autoVideo(); mostrarVideo();
+  } catch(e){ $("#cardVideo").innerHTML = `<h3>${tr("Vídeo","Video")}</h3><div class="aviso">${tr("Não foi possível ler o vídeo: ","Could not read the video: ")}${e.message}</div>`; }
+}
+const disponiveisVideo = () => { const v = S.video, f = v.info.fps; return Math.max(0, Math.min(Math.round(v.fim*f), v.info.n_quadros - 1) - Math.round(v.inicio*f) + 1); };
+function nRecomendado(){
+  // mesmo critério do servidor: um quadro a cada ~5 px de movimento da região mais rápida no trecho
+  const v = S.video, i = v.info, c = i.curva;
+  // movimento no trecho: cada intervalo amostrado pesa pela fração que cai dentro do trecho; o salto da ruptura não conta
+  const mov = c.mov_px.reduce((s, m, k) => { if (k === c.k_ruptura) return s;
+    const f = Math.max(0, Math.min(v.fim, c.t1[k]) - Math.max(v.inicio, c.t0[k]))/Math.max(1e-9, c.t1[k] - c.t0[k]); return s + f*m; }, 0);
+  const n = Math.max(i.n_min, Math.min(i.n_max, Math.round((v.a_trecho ? i.movimento_total_px : mov)/i.px_por_quadro) + 1));
+  return {n: Math.min(n, disponiveisVideo()), mov: v.a_trecho ? i.movimento_total_px : mov};
+}
+function autoVideo(){
+  const v = S.video, i = v.info;
+  if (v.a_trecho){ v.inicio = i.inicio_s; v.fim = i.fim_s; }
+  if (v.a_n) v.n = nRecomendado().n;
+}
+function graficoAtividade(){
+  const v = S.video, i = v.info, c = i.curva, w = 320, h = 90, T = i.duracao_s || 1;
+  const mx = Math.max(...c.mov_px, i.limiar_px * 2, 1e-3), X = t => t/T*w, Y = m => h - 14 - Math.sqrt(m/mx)*(h - 22);
+  const pts = c.t.map((t, k) => `${X(t).toFixed(1)},${Y(c.mov_px[k]).toFixed(1)}`).join(" ");
+  return `<svg class="atividade" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <rect x="${X(v.inicio)}" y="0" width="${Math.max(1, X(v.fim) - X(v.inicio))}" height="${h - 12}" fill="var(--auto)"/>
+    <line x1="0" x2="${w}" y1="${Y(i.limiar_px)}" y2="${Y(i.limiar_px)}" stroke="var(--muted)" stroke-dasharray="3 3" stroke-width="0.8"/>
+    <polyline fill="none" stroke="var(--accent)" stroke-width="1.8" points="${pts}"/>
+    <text x="2" y="${h - 2}" font-size="9" fill="var(--muted)">0 s</text><text x="${w - 2}" y="${h - 2}" font-size="9" fill="var(--muted)" text-anchor="end">${num(T, 1)} s</text></svg>
+    <div class="nota">${tr("Movimento entre instantes amostrados (escala raiz) · faixa verde: trecho escolhido · tracejado: limiar de ruído","Motion between sampled instants (square-root scale) · green band: chosen interval · dashed: noise threshold")}</div>`;
+}
+function mostrarVideo(){
+  const v = S.video, i = v.info, cv = $("#cardVideo"); if (!cv) return;
+  const q = t => "/api/video/quadro?" + new URLSearchParams({arquivo:v.arquivo, t, largura:520});
+  const rec = nRecomendado(), disp = disponiveisVideo(), dt = v.n > 1 ? (v.fim - v.inicio)/(v.n - 1) : 0;
+  const perdas = /^(h264|avc1|hevc|h265|hev1|hvc1|x264|mp4v|xvid|divx|fmp4|vp8|vp9|av01|wmv|mpg|mjpg)/i.test(i.codec || "");
+  cv.innerHTML = `<h3>${tr("Vídeo","Video")}</h3>
+    <div class="kv"><span>${tr("Arquivo","File")}</span><span style="word-break:break-all">${i.nome}</span>
+      <span>${tr("Formato","Format")}</span><span>${i.largura} × ${i.altura} px · ${num(i.fps, 3)} ${tr("quadros/s","frames/s")} · ${i.codec || "?"} · ${num(i.tamanho_mb, 1)} MB</span>
+      <span>${tr("Duração","Duration")}</span><span>${fmtS(i.duracao_s)} · ${i.n_quadros} ${tr("quadros","frames")}</span></div>
+    ${graficoAtividade()}
+    <div class="campo"><div class="nome">${tr("Trecho do ensaio","Test interval")}</div><div class="pil" id="pilT"></div>
+      <div class="ctl lin" style="margin:0"><label>${tr("início","start")} <input type="number" id="vIni" min="0" step="0.01" value="${+v.inicio.toFixed(3)}"> s</label>
+        <label>${tr("fim","end")} <input type="number" id="vFim" min="0" step="0.01" value="${+v.fim.toFixed(3)}"> s</label></div>
+      <div class="ajuda">${i.motivo === "sem_movimento" ? tr("Automático: nenhum movimento acima do ruído foi detectado; usa o vídeo inteiro.","Automatic: no motion above the noise was detected; the whole video is used.")
+        : tr(`Automático: do primeiro ao último instante com movimento acima do ruído (${num(i.limiar_px, 2)} px)${i.ruptura ? ", parando antes do salto da ruptura" : ""}: ${fmtS(i.inicio_s)} a ${fmtS(i.fim_s)}.`,
+             `Automatic: from the first to the last instant with motion above the noise (${num(i.limiar_px, 2)} px)${i.ruptura ? ", stopping before the fracture jump" : ""}: ${fmtS(i.inicio_s)} to ${fmtS(i.fim_s)}.`)}</div></div>
+    <div class="campo"><div class="nome">${tr("Quadros a extrair","Frames to extract")}</div><div class="pil" id="pilN"></div>
+      <div class="ctl"><input type="number" id="vN" min="2" step="1" value="${v.n}"></div>
+      <div class="ajuda">${tr(`Automático: um quadro a cada ≈ ${num(i.px_por_quadro, 0)} px de movimento da região mais rápida (${num(rec.mov, 0)} px no trecho), entre ${i.n_min} e ${i.n_max} → ${rec.n}. Intervalo entre quadros ≈ ${fmtS(dt)} · ${disp} quadros disponíveis no trecho.`,
+        `Automatic: one frame every ≈ ${num(i.px_por_quadro, 0)} px of motion of the fastest region (${num(rec.mov, 0)} px in the interval), between ${i.n_min} and ${i.n_max} → ${rec.n}. Interval between frames ≈ ${fmtS(dt)} · ${disp} frames available in the interval.`)}</div></div>
+    <div class="thumbs"><figure><img src="${q(v.inicio)}"><figcaption>${tr("início do trecho","interval start")} (${fmtS(v.inicio)})</figcaption></figure>
+      <figure><img src="${q(v.fim)}"><figcaption>${tr("fim do trecho","interval end")} (${fmtS(v.fim)})</figcaption></figure></div>
+    ${perdas ? `<div class="aviso">${tr("Este vídeo usa compressão com perdas. A compressão apaga detalhes finos do speckle e aumenta o ruído do DIC; quando puder, grave imagens (TIFF/PNG) ou vídeo sem perdas.","This video uses lossy compression, which removes fine speckle detail and increases DIC noise; when possible, record images (TIFF/PNG) or lossless video.")}</div>` : ""}
+    <div class="nav"><span class="nota" id="vEstado">${tr("Os quadros são gravados em PNG na pasta de trabalho, em <code>videos</code>, com o tempo de cada quadro em <code>frames.csv</code>.","Frames are written as PNG to the working folder, under <code>videos</code>, with the time of each frame in <code>frames.csv</code>.")}</span>
+      <span><button class="peq" id="vCancelar" hidden>${tr("Cancelar","Cancel")}</button> <button class="prim" id="vExtrair">${tr("Extrair quadros e continuar","Extract frames and continue")}</button></span></div>
+    <progress id="vBarra" value="0" max="1" hidden></progress>`;
+  $("#pilT").appendChild(pilula(v.a_trecho, x => { v.a_trecho = x; autoVideo(); mostrarVideo(); }));
+  $("#pilN").appendChild(pilula(v.a_n, x => { v.a_n = x; autoVideo(); mostrarVideo(); }));
+  const eI = $("#vIni"), eF = $("#vFim"), eN = $("#vN");
+  eI.disabled = eF.disabled = v.a_trecho; eN.disabled = v.a_n;
+  const trecho = () => { const a = Math.max(0, +eI.value || 0), b = Math.min(i.duracao_s, +eF.value || 0);
+    if (b <= a){ alert(tr("O fim precisa ser maior que o início.","The end must be after the start.")); mostrarVideo(); return; }
+    v.inicio = a; v.fim = b; autoVideo(); mostrarVideo(); };
+  eI.onchange = trecho; eF.onchange = trecho;
+  eN.onchange = () => { v.n = Math.max(2, Math.min(disponiveisVideo(), Math.round(+eN.value || 2))); mostrarVideo(); };
+  $("#vExtrair").onclick = extrairVideo;
+  $("#vCancelar").onclick = () => api("/api/video/cancelar", {});
+}
+async function extrairVideo(){
+  const v = S.video;
+  try {
+    const r = await api("/api/video/extrair", {arquivo:v.arquivo, inicio_s:v.inicio, fim_s:v.fim, n:v.n, pasta_trabalho:S.pos.trabalho || S.prefs.pasta_trabalho});
+    $("#vExtrair").disabled = true; $("#vCancelar").hidden = false; const barra = $("#vBarra"); barra.hidden = false; barra.max = r.total;
+    while (true){
+      await new Promise(ok => setTimeout(ok, 400));
+      const s = await api("/api/video/status");
+      if (!$("#vBarra")) return;
+      barra.value = s.feitos; $("#vEstado").textContent = tr(`extraindo quadro ${s.feitos} de ${s.total}…`, `extracting frame ${s.feitos} of ${s.total}…`);
+      if (s.estado === "rodando") continue;
+      if (s.estado !== "concluida"){ $("#vEstado").textContent = s.estado === "cancelada" ? tr("Cancelado.","Cancelled.") : tr("Erro: ","Error: ") + s.erro;
+        $("#vExtrair").disabled = false; $("#vCancelar").hidden = true; barra.hidden = true; return; }
+      S.origemVideo = {pasta:s.pasta, nome:v.info.nome, inicio:v.inicio, fim:v.fim, n:s.feitos};
+      S.fonte = "imagens"; S.info = null; S.prefs.ultima_pasta = s.pasta;
+      S.sel = {inicio:1, fim:null, a_cada:1, auto:true}; S.roi.fonte = "auto"; S.feitas.clear();
+      ir(0); await analisarPasta(s.pasta); return;
+    }
+  } catch(e){ alert(e.message); }
 }
 async function listarExemplos(){
   const el = $("#listaEx"); if (!el) return;
@@ -304,7 +434,8 @@ function mostrarInfo(){
   $("#cardInfo").innerHTML = `<h3>${tr("Sequência","Sequence")}</h3>
     <div class="kv"><span>${tr("Pasta","Folder")}</span><span style="word-break:break-all">${i.pasta}</span>
       <span>${tr("Imagens na pasta","Images in folder")}</span><span>${i.n_imagens_pasta} · ${i.largura} × ${i.altura} px · ${i.modo}</span>
-      <span>${tr("Quadros analisados","Frames analysed")}</span><span><b>${i.n_quadros}</b> (${i.primeira} … ${i.ultima})</span></div>
+      <span>${tr("Quadros analisados","Frames analysed")}</span><span><b>${i.n_quadros}</b> (${i.primeira} … ${i.ultima})</span>
+      ${S.origemVideo && S.origemVideo.pasta === i.pasta ? `<span>${tr("Origem","Source")}</span><span>🎬 ${S.origemVideo.nome} · ${fmtS(S.origemVideo.inicio)} – ${fmtS(S.origemVideo.fim)} · ${S.origemVideo.n} ${tr("quadros extraídos","frames extracted")}</span>` : ""}</div>
     <div class="campo" style="border:0"><div class="nome">${tr("Seleção de quadros","Frame selection")}</div><div class="pil"></div>
       <div class="ctl lin" style="margin:0"><label>${tr("de","from")} <input type="number" id="sIni" min="1" value="${S.sel.inicio}"></label>
       <label>${tr("até","to")} <input type="number" id="sFim" min="1" value="${S.sel.fim || i.n_imagens_pasta}"></label>

@@ -207,6 +207,45 @@ def executar(cfg, saida):
 
 # ----------------------------------------------------------------------------- utilidades HTTP
 
+def contar_videos(d):
+    from .video import EXTENSOES_VIDEO
+    try:
+        return sum(1 for f in d.iterdir() if f.suffix.lower() in EXTENSOES_VIDEO)
+    except OSError:
+        return 0
+
+
+class TarefaVideo:
+    """Extração de quadros de um vídeo (uma por vez), acompanhada por /api/video/status."""
+    def __init__(self):
+        self.estado, self.feitos, self.total, self.pasta, self.erro, self.cancelar = "parada", 0, 0, None, "", False
+
+    def info(self):
+        return {"estado": self.estado, "feitos": self.feitos, "total": self.total,
+                "pasta": self.pasta and str(self.pasta), "erro": self.erro}
+
+
+TAREFA_VIDEO = TarefaVideo()
+
+
+def extrair_video(d):
+    from . import video
+    tv = TAREFA_VIDEO
+    try:
+        base = Path(d.get("pasta_trabalho") or ler_prefs()["pasta_trabalho"]) / "videos"
+        base.mkdir(parents=True, exist_ok=True)
+        destino = video.pasta_livre(base, re.sub(r"[^\w.-]+", "_", Path(d["arquivo"]).stem) + "_frames")
+        tv.pasta = destino
+        video.extrair(d["arquivo"], float(d["inicio_s"]), float(d["fim_s"]), int(d["n"]), destino,
+                      progresso=lambda i, n: setattr(tv, "feitos", i), cancelar=lambda: tv.cancelar)
+        tv.estado = "concluida"
+    except InterruptedError:
+        tv.estado = "cancelada"
+    except Exception as e:  # noqa: BLE001
+        traceback.print_exc()
+        tv.estado, tv.erro = "erro", str(e)
+
+
 def contar_imagens(d):
     try:
         return sum(1 for f in d.iterdir() if f.suffix.lower() in EXTENSOES)
@@ -222,14 +261,20 @@ def listar_pastas(caminho):
     try:
         for d in sorted(p.iterdir(), key=lambda q: q.name.lower()):
             if d.is_dir() and not d.name.startswith((".", "$")):
-                pastas.append({"nome": d.name, "caminho": str(d), "n_imagens": contar_imagens(d),
+                pastas.append({"nome": d.name, "caminho": str(d), "n_imagens": contar_imagens(d), "n_videos": contar_videos(d),
                                "resultado": (d / "visualizador.html").exists()})
     except OSError:
         pass
     unidades = [f"{c}:\\" for c in "CDEFGHIJ" if Path(f"{c}:\\").exists()] if os.name == "nt" else ["/"]
     atalhos = [{"nome": n, "caminho": str(c)} for n, c in (("Home", Path.home()), ("Documents", Path.home() / "Documents"),
                ("Desktop", Path.home() / "Desktop")) if c.is_dir()]
-    return {"caminho": str(p), "pai": str(p.parent) if p.parent != p else None, "pastas": pastas,
+    from .video import EXTENSOES_VIDEO
+    try:
+        videos = [{"nome": f.name, "caminho": str(f), "mb": round(f.stat().st_size / 1e6, 1)}
+                  for f in sorted(p.iterdir(), key=lambda q: q.name.lower()) if f.is_file() and f.suffix.lower() in EXTENSOES_VIDEO]
+    except OSError:
+        videos = []
+    return {"caminho": str(p), "pai": str(p.parent) if p.parent != p else None, "pastas": pastas, "videos": videos,
             "n_imagens": contar_imagens(p), "resultado": (p / "visualizador.html").exists(),
             "unidades": unidades, "atalhos": atalhos}
 
@@ -323,6 +368,16 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/exemplos":
                 from .exemplos import EXEMPLOS
                 return self.enviar([{"nome": k, "pt": d[0], "en": d[1]} for k, (_, d) in EXEMPLOS.items()])
+            if u.path == "/api/video/sugerir":
+                from . import video
+                r = video.sugerir(q["arquivo"])
+                salvar_prefs(ultima_pasta=str(Path(q["arquivo"]).parent))
+                return self.enviar(r)
+            if u.path == "/api/video/quadro":
+                from . import video
+                return self.enviar(video.quadro_jpeg(q["arquivo"], float(q.get("t", 0)), int(q.get("largura", 900))), "image/jpeg")
+            if u.path == "/api/video/status":
+                return self.enviar(TAREFA_VIDEO.info())
             if u.path == "/api/status":
                 return self.enviar(TAREFA.info())
             if u.path == "/api/resultados":
@@ -368,6 +423,19 @@ class Handler(BaseHTTPRequestHandler):
                     return self.enviar({"erro": "not found"}, codigo=404)
                 pasta = gerar(d["nome"], Path(ler_prefs()["pasta_trabalho"]) / "examples")
                 return self.enviar({"ok": True, "pasta": str(pasta)})
+            if u.path == "/api/video/extrair":
+                if TAREFA_VIDEO.estado == "rodando":
+                    return self.enviar({"erro": "busy"}, codigo=409)
+                from . import video
+                alvo = video.indices_extracao(video.informacoes(d["arquivo"])["fps"], video.informacoes(d["arquivo"])["n_quadros"],
+                                              float(d["inicio_s"]), float(d["fim_s"]), int(d["n"]))
+                TAREFA_VIDEO.__init__()
+                TAREFA_VIDEO.estado, TAREFA_VIDEO.total = "rodando", len(alvo)
+                threading.Thread(target=extrair_video, args=(d,), daemon=True).start()
+                return self.enviar({"ok": True, "total": len(alvo)})
+            if u.path == "/api/video/cancelar":
+                TAREFA_VIDEO.cancelar = True
+                return self.enviar({"ok": True})
             if u.path == "/api/cancelar":
                 TAREFA.cancelar = True
                 if TAREFA.proc:
