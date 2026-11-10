@@ -29,6 +29,7 @@ dependencies = [
     "natsort>=8",
     "matplotlib>=3.7",
     "scikit-image>=0.21",
+    "markdown>=3.5",
 ]
 
 [project.optional-dependencies]
