@@ -1,7 +1,7 @@
 """Moby-DIC · gera um visualizador HTML autocontido (abre direto no navegador) para uma pasta de resultados.
 
-Armazena ux, uy, εxx, εyy, εxy e, quando disponíveis, a rotação ω (campos_extra.npz de
-campos_camadas.py) e a ZNCC por ponto (qualidade_subsets.npz de dic_subsets.py). Os campos são
+Armazena ux, uy, εxx, εyy, εxy, a rotação ω e, quando disponível, a ZNCC por ponto
+(qualidade_subsets.npz), além das trajetórias dos pontos para o extensômetro digital. Os campos são
 interpolados numa grade regular na configuração deformada, quantizados em 12 bits, codificados por
 diferença entre quadros e comprimidos com gzip dentro do HTML; as imagens de fundo entram como JPEG.
 
