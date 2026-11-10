@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moby-dic"
+version = "1.0.0"
+description = "Moby-DIC: 2D digital image correlation (DIC) for mechanical testing, with a guided interface and an interactive viewer."
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "João Felipe" }]
+keywords = ["digital image correlation", "DIC", "strain", "mechanical testing", "experimental mechanics"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Natural Language :: Portuguese (Brazilian)",
+    "Development Status :: 5 - Production/Stable",
+]
+dependencies = [
+    "numpy>=1.24,<2.0",
+    "scipy>=1.10",
+    "numba>=0.58",
+    "pillow>=10",
+    "natsort>=8",
+    "matplotlib>=3.7",
+    "scikit-image>=0.21",
+]
+
+[project.optional-dependencies]
+mudic = ["muDIC==0.2.1"]
+dev = ["pytest", "pyinstaller>=6", "markdown>=3.5"]
+
+[project.scripts]
+moby-dic = "mobydic.__main__:main"
+
+[tool.setuptools]
+packages = ["mobydic"]
+
+[tool.setuptools.package-data]
+mobydic = ["web/*.html", "assets/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

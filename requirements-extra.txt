@@ -1,0 +1,8 @@
+# Optional: muDIC backend, research scripts, tests, packaging, documentation and video tutorial
+muDIC==0.2.1
+h5py==3.16.0
+pytest
+pyinstaller==6.22.3
+markdown          # docs/build_docs.py
+playwright        # docs/video/make_tutorial_video.py, docs/tools/make_figures.py (uses the installed Microsoft Edge)
+imageio-ffmpeg    # video assembly

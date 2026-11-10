@@ -1,0 +1,79 @@
+1
+00:00:00,944 --> 00:00:13,193
+Welcome to Moby-DIC, free software for two-dimensional digital image correlation. In this tutorial we run a complete analysis of a tensile test, from the images to the strain maps.
+
+2
+00:00:13,952 --> 00:00:25,321
+On the first start, Moby-DIC asks for your language. The interface, the messages and the figures will all follow this choice, and you can change it later in the top bar.
+
+3
+00:00:25,828 --> 00:00:39,637
+Next, you can analyse your own images, try an example, or read the documentation. We will use the built-in example: a synthetic tensile test with a growing neck, whose exact solution is known.
+
+4
+00:00:40,951 --> 00:00:58,239
+On the left is the workflow, in eight steps. Step one shows the image sequence: thirteen frames, the first and the last images, and the sharpness of the sequence. The focus is stable. Every parameter already has an automatic value.
+
+5
+00:00:59,430 --> 00:01:13,969
+Step two is the scale, in micrometres per pixel, which comes from a calibration of your set-up. These synthetic images have no physical scale, so we simply enter two. Strains do not depend on it.
+
+6
+00:01:15,168 --> 00:01:29,256
+Step three is the region of interest. The dashed yellow line marks the specimen edges, detected along the whole sequence. The cyan rectangle is the automatic region, kept inside the specimen with a margin.
+
+7
+00:01:29,977 --> 00:01:38,156
+You can draw, move or resize it with the mouse, check it on the last frame, and return to the automatic region at any time.
+
+8
+00:01:39,343 --> 00:01:58,856
+Step four chooses the algorithm and the grid. Local subset correlation is recommended. The subset size and the grid step were computed from the measured speckle size. Below the preview, Moby-DIC shows the number of points, the spatial resolution of the strain, and the expected run time.
+
+9
+00:02:00,177 --> 00:02:14,961
+Step five controls the reference image. In automatic mode, the reference is updated only when the correlation quality drops, which keeps accumulated errors small. Lost points are rescued against the previous frame.
+
+10
+00:02:16,153 --> 00:02:22,997
+Step six sets the working folder and the name of the analysis. Each analysis gets its own folder.
+
+11
+00:02:24,185 --> 00:02:32,129
+Step seven summarises the configuration, and shows which values are automatic. Let's start the analysis.
+
+12
+00:02:32,639 --> 00:02:46,472
+The analysis runs on this computer, in parallel. For every frame, the log shows the reference used, the fraction of measured points, and the correlation quality, where one would be a perfect match.
+
+13
+00:02:47,074 --> 00:02:53,238
+When the correlation is finished, the interactive viewer is built. Let's open it.
+
+14
+00:02:55,270 --> 00:03:07,674
+The viewer opens with four panels: the horizontal and vertical displacements, and the axial and transverse strains. Press play to animate the test, or step through it frame by frame.
+
+15
+00:03:08,870 --> 00:03:18,359
+Let's focus on the axial strain. We switch to a single panel and select the axial strain, epsilon x x, in the last frame.
+
+16
+00:03:18,869 --> 00:03:35,892
+The neck has formed in the middle of the specimen. Hovering over the map reads the values. At the centre of the neck the strain is about seventeen percent, very close to the exact value. The small difference comes from the spatial resolution of the strain calculation.
+
+17
+00:03:36,613 --> 00:03:49,151
+Derived fields are computed on the fly. The axial strain increment shows where the specimen is deforming right now. Near the end of the test, almost all of the deformation happens in the neck.
+
+18
+00:03:49,654 --> 00:03:57,588
+Colour scales can be automatic, taken from the current frame, or typed in, and thirteen colormaps are available.
+
+19
+00:03:58,089 --> 00:04:09,628
+The export panel saves the current figure, a range of frames as images, or a video of the animation. The viewer is a single file, which you can share with colleagues.
+
+20
+00:04:10,141 --> 00:04:22,590
+The documentation, available from the top bar, explains every option and the theory behind the method, and includes more tutorials. Thank you for watching, and enjoy Moby-DIC.

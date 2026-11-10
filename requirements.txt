@@ -1,0 +1,9 @@
+# Moby-DIC: dependências do programa (versões testadas)
+numpy==1.26.4
+scipy==1.13.1
+numba==0.61.2
+llvmlite==0.44.0
+pillow==13.0.0
+natsort==8.4.0
+matplotlib==3.9.4
+scikit-image==0.24.0

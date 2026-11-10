@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moby-DIC</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--ink:#1d2330;--muted:#5d6678;--line:#d9dde5;--accent:#1d5aa0;--accent-ink:#fff;
+  --ok:#1a8f55;--warn:#b25b00;--soft:#eaf1fa;--auto:#e3f2ea;--auto-ink:#16653c;--marca:#14427a}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#11151b;--card:#1a1f27;--ink:#e6e9ef;--muted:#9aa3b2;--line:#2c333e;
+  --accent:#5b95f0;--accent-ink:#0b0d10;--ok:#3cc483;--warn:#f0a040;--soft:#1c2634;--auto:#18301f;--auto-ink:#7fd9a8;--marca:#0e2f57}}
+:root[data-theme="dark"]{--bg:#11151b;--card:#1a1f27;--ink:#e6e9ef;--muted:#9aa3b2;--line:#2c333e;--accent:#5b95f0;--accent-ink:#0b0d10;
+  --ok:#3cc483;--warn:#f0a040;--soft:#1c2634;--auto:#18301f;--auto-ink:#7fd9a8;--marca:#0e2f57}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 18px;background:var(--marca);color:#fff}
+.marca{display:flex;align-items:center;gap:12px}
+.marca img{width:40px;height:40px}
+.marca h1{font-size:19px;margin:0;letter-spacing:.2px}
+.marca .sub{color:#c5d7ee;font-size:12.5px}
+header .acoes{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+header select,header button{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.3)}
+header select option{color:#111}
+#cabStatus{font-size:12.5px;color:#ffe3a3}
+.app{display:grid;grid-template-columns:250px 1fr;min-height:calc(100vh - 60px)}
+@media (max-width:860px){.app{grid-template-columns:1fr}.fluxo{position:static!important;flex-direction:row;overflow-x:auto;border-right:0!important;border-bottom:1px solid var(--line);min-height:0!important}
+  .fluxo .no{min-width:150px}.fluxo .conector{display:none}}
+.fluxo{position:sticky;top:0;align-self:start;display:flex;flex-direction:column;padding:18px 14px;border-right:1px solid var(--line);background:var(--card);min-height:calc(100vh - 60px)}
+.no{display:flex;gap:10px;align-items:flex-start;padding:8px;border-radius:10px;cursor:pointer;border:1px solid transparent}
+.no:hover{background:var(--soft)}
+.no.ativo{background:var(--soft);border-color:var(--accent)}
+.no.bloqueado{opacity:.45;cursor:default}
+.no .bola{flex:0 0 28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;border:2px solid var(--line);color:var(--muted);background:var(--card)}
+.no.ativo .bola{border-color:var(--accent);color:var(--accent)}
+.no.feito .bola{background:var(--ok);border-color:var(--ok);color:#fff}
+.no .t{font-weight:600}.no .d{font-size:12px;color:var(--muted)}
+.conector{width:2px;height:14px;background:var(--line);margin-left:21px}
+.rodape{margin-top:auto;padding-top:18px;font-size:12px;color:var(--muted)}
+main{padding:18px 22px 60px;min-width:0}
+.etapa{max-width:1200px}
+.etapa h2{margin:0 0 4px;font-size:20px}
+.etapa .lead{color:var(--muted);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.card h3{margin:0 0 10px;font-size:15px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:14px}
+.lin{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:8px}
+label{color:var(--muted)}
+input[type=number],input[type=text]{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink)}
+input[type=number]{width:96px}
+input[type=text]{min-width:240px;flex:1}
+select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink)}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:7px 13px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:default}
+button.prim{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.peq{padding:4px 9px;font-size:13px}
+.nav{display:flex;justify-content:space-between;gap:10px;margin-top:10px;align-items:center}
+.auto{display:inline-flex;align-items:center;gap:6px;background:var(--auto);color:var(--auto-ink);border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:600;cursor:pointer;user-select:none}
+.manual{display:inline-flex;align-items:center;gap:6px;background:var(--soft);color:var(--muted);border-radius:999px;padding:3px 10px;font-size:12.5px;cursor:pointer;user-select:none}
+.auto input,.manual input{margin:0}
+.campo{display:grid;grid-template-columns:minmax(160px,230px) auto 1fr;gap:8px 12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.campo:last-child{border-bottom:0}
+.campo .nome{font-weight:600}
+.campo .ajuda{color:var(--muted);font-size:12.5px;grid-column:1/-1;margin-top:-4px}
+.nota{color:var(--muted);font-size:12.5px}
+.aviso{background:color-mix(in srgb,var(--warn) 14%,transparent);border-left:3px solid var(--warn);padding:8px 10px;border-radius:6px;margin:8px 0;font-size:13px}
+.okbox{background:color-mix(in srgb,var(--ok) 12%,transparent);border-left:3px solid var(--ok);padding:8px 10px;border-radius:6px;margin:8px 0;font-size:13px}
+.lista{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.lista div{display:flex;justify-content:space-between;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line);cursor:pointer}
+.lista div:hover{background:var(--soft)}
+.badge{font-size:12px;color:var(--muted);white-space:nowrap}
+.badge.img{color:var(--accent);font-weight:600}.badge.res{color:var(--ok);font-weight:600}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13.5px}
+.kv span:nth-child(odd){color:var(--muted)}
+.thumbs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.thumbs figure{margin:0}.thumbs img{width:100%;border-radius:6px;border:1px solid var(--line);display:block}
+.thumbs figcaption{font-size:12px;color:var(--muted);margin-top:3px}
+.metodos{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:10px;margin-bottom:12px}
+.metodo{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;background:var(--card)}
+.metodo.sel{border-color:var(--accent);background:var(--soft)}
+.metodo.off{opacity:.45;cursor:default}
+.metodo .t{font-weight:700}.metodo .d{font-size:12.5px;color:var(--muted)}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--auto);color:var(--auto-ink);margin-left:6px}
+canvas.editor{width:100%;display:block;border-radius:8px;border:1px solid var(--line);touch-action:none;cursor:crosshair;background:#000}
+table.resumo{border-collapse:collapse;width:100%;font-size:13.5px}
+table.resumo td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+table.resumo td:first-child{color:var(--muted);width:30%}
+.orig{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px}
+.orig.a{background:var(--auto);color:var(--auto-ink)}.orig.m{background:var(--soft);color:var(--muted)}
+pre.log{background:#0f1217;color:#cfd6e2;border-radius:8px;padding:10px;height:280px;overflow:auto;font-size:12px;margin:8px 0 0;white-space:pre-wrap}
+progress{width:100%;height:12px}
+iframe.vis{width:100%;height:calc(100vh - 190px);min-height:600px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+svg.spark{width:100%;height:70px;display:block}
+.galeria a{font-size:12.5px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(720px,95vw);padding:16px}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+#dlgIdioma{width:min(580px,95vw);padding:28px 26px;text-align:center}
+#dlgIdioma img{width:84px;height:84px}
+#dlgIdioma h2{margin:8px 0 2px;font-size:24px}
+.escolhas{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
+.escolhas button{padding:16px 10px;font-size:16px;font-weight:600;border-width:1.5px;border-radius:12px}
+.escolhas button small{display:block;font-weight:400;font-size:12.5px;color:var(--muted);margin-top:3px}
+.inicio{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:18px;text-align:left}
+.inicio button{text-align:left;padding:12px 14px;border-radius:12px}
+.inicio button b{display:block;margin-bottom:2px}.inicio button span{font-size:12.5px;color:var(--muted)}
+.exemplos{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+</style>
+</head>
+<body>
+<header>
+  <div class="marca"><img src="/logo.svg" alt=""><div><h1>Moby-DIC</h1><div class="sub" id="slogan"></div></div></div>
+  <div class="acoes"><span id="cabStatus"></span>
+    <select id="idioma" aria-label="Idioma / Language"><option value="pt">Português</option><option value="en">English</option></select>
+    <button id="ajuda" class="peq"></button><button id="sobre" class="peq"></button><button id="encerrar" class="peq"></button></div>
+</header>
+<div class="app">
+  <nav class="fluxo" id="fluxo"></nav>
+  <main id="conteudo"></main>
+</div>
+<dialog id="dlgPasta"><h3 id="dlgTitulo" style="margin-top:0"></h3><div id="dlgCorpo"></div>
+  <div class="nav"><span></span><div><button id="dlgCancelar"></button> <button class="prim" id="dlgOk"></button></div></div></dialog>
+<dialog id="dlgIdioma"><img src="/logo.svg" alt=""><h2>Moby-DIC</h2><div class="nota" id="idiomaSub">Choose your language · Escolha o idioma</div>
+  <div id="idiomaCorpo"><div class="escolhas"><button data-l="en">English<small>Interface, logs and figures in English</small></button>
+    <button data-l="pt">Português<small>Interface, mensagens e figuras em português</small></button></div>
+    <p class="nota" style="margin-top:16px">You can change it later in the top bar · Pode ser alterado depois na barra superior</p></div></dialog>
+<dialog id="dlgSobre"><div id="sobreCorpo"></div><div class="nav"><span></span><button id="sobreOk">OK</button></div></dialog>
+<script>
+// ------------------------------------------------------------------ idioma
+let LANG = "pt";
+const tr = (pt, en) => LANG === "en" ? en : pt;
+const $ = (s, r=document) => r.querySelector(s);
+const ERROS = {busy:["Já existe uma análise em andamento.","An analysis is already running."], nome_invalido:["Nome de pasta de saída inválido.","Invalid output folder name."],
+  ja_existe:["A pasta de saída já existe; escolha outro nome.","The output folder already exists; choose another name."],
+  sem_resultado:["A pasta não contém resultados do Moby-DIC.","The folder does not contain Moby-DIC results."]};
+const api = async (url, corpo) => { const r = await fetch(url, corpo ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(corpo)} : {});
+  const j = await r.json().catch(() => ({erro:"?"})); if (!r.ok) { const e = ERROS[j.erro]; throw new Error(e ? tr(...e) : (j.erro || r.statusText)); } return j; };
+const num = (v, d=2) => (+v).toLocaleString(LANG === "en" ? "en-US" : "pt-BR", {maximumFractionDigits:d});
+
+// ------------------------------------------------------------------ estado
+const S = {
+  etapa: 0, feitas: new Set(), app: {}, prefs: {}, info: null,
+  sel: {inicio:1, fim:null, a_cada:1, auto:true},
+  escala: {valor:null, modo:"auto"},       // modo: auto (último usado) | manual | pixels
+  roi: {img:null, fonte:"auto"},
+  met: {tipo:"subsets", subset:25, passo:5, janela:5, a_subset:true, a_passo:true, a_janela:true, elemento:30, a_elemento:true, cpx:10, cpy:8, a_cp:true},
+  ref: {modo:"automatica", a_cada:2, zncc_ref:0.98, zncc_ref_p05:0.95, falha_ref:0.003, zncc_min:0.8, igualar:false, a_igualar:true, resgate:true, a_avancado:true},
+  pos: {idioma:"pt", cmap:"jet", saida:"", a_saida:true, trabalho:""},
+  resultado: null,
+};
+const ETAPAS = () => [
+  {t:tr("Imagens","Images"), d:tr("pasta e quadros","folder and frames"), f:etapaImagens},
+  {t:tr("Escala","Scale"), d:tr("µm por pixel","µm per pixel"), f:etapaEscala},
+  {t:tr("Região de interesse","Region of interest"), d:tr("ROI sobre a amostra","ROI on the specimen"), f:etapaROI},
+  {t:tr("Método e malha","Method and grid"), d:tr("algoritmo e grade","algorithm and grid"), f:etapaMetodo},
+  {t:tr("Referência","Reference"), d:tr("atualização e robustez","updating and robustness"), f:etapaReferencia},
+  {t:tr("Saída","Output"), d:tr("pasta e visualizador","folder and viewer"), f:etapaSaida},
+  {t:tr("Executar","Run"), d:tr("resumo e progresso","summary and progress"), f:etapaExecutar},
+  {t:tr("Visualizar","View"), d:tr("mapas e animação","maps and animation"), f:etapaVisualizar},
+];
+const roiInferior = () => { const [x1, y1, x2, y2] = S.roi.img, h = S.info.altura; return [x1, h-1-y2, x2, h-1-y1]; };
+const roiSuperior = r => { const h = S.info.altura; return [r[0], h-1-r[3], r[2], h-1-r[1]]; };
+const nQuadros = () => S.info ? S.info.n_quadros : 0;
+const escalaAtual = () => S.escala.modo === "pixels" ? null : S.escala.valor;
+function aplicarAutomaticos(){
+  const i = S.info; if (!i) return;
+  if (S.roi.fonte === "auto" || !S.roi.img) { S.roi.img = roiSuperior(i.roi); S.roi.fonte = "auto"; }
+  if (S.met.a_subset) S.met.subset = i.subset_px;
+  if (S.met.a_passo) S.met.passo = i.passo_px;
+  if (S.met.a_janela) S.met.janela = i.janela_deformacao;
+  if (S.met.a_elemento) S.met.elemento = i.elemento_q4_px;
+  if (S.ref.a_igualar) S.ref.igualar = i.igualar_nitidez;
+  if (S.ref.a_avancado) Object.assign(S.ref, {zncc_ref:i.zncc_ref, zncc_ref_p05:i.zncc_ref_p05, falha_ref:i.falha_ref, zncc_min:i.zncc_min});
+  if (S.escala.modo === "auto") S.escala.valor = S.prefs.escala_um_px || null;
+  if (S.pos.a_saida) S.pos.saida = nomeSaida();
+}
+function nomeSaida(){
+  const nome = (S.info?.pasta || "sample").split(/[\\/]/).filter(Boolean).pop().replace(/[^\w.-]+/g, "_");
+  const d = new Date(), z = n => String(n).padStart(2, "0");
+  return `${nome}_${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`;
+}
+
+// ------------------------------------------------------------------ fluxo e componentes
+function desenharFluxo(){
+  const f = $("#fluxo"); f.innerHTML = ""; const et = ETAPAS();
+  et.forEach((e, k) => {
+    const livre = k === 0 || k === 7 || (S.info && (k < 6 || S.feitas.has(5)));
+    const el = document.createElement("div");
+    el.className = "no" + (k === S.etapa ? " ativo" : "") + (S.feitas.has(k) ? " feito" : "") + (livre ? "" : " bloqueado");
+    el.innerHTML = `<div class="bola">${S.feitas.has(k) && k !== S.etapa ? "✓" : k+1}</div><div><div class="t">${e.t}</div><div class="d">${e.d}</div></div>`;
+    if (livre) el.onclick = () => ir(k);
+    f.appendChild(el);
+    if (k < et.length-1){ const c = document.createElement("div"); c.className = "conector"; f.appendChild(c); }
+  });
+  f.insertAdjacentHTML("beforeend", `<div class="rodape">Moby-DIC ${S.app.versao || ""}</div>`);
+}
+function ir(k){ S.etapa = k; desenharFluxo(); const c = $("#conteudo"); c.innerHTML = ""; ETAPAS()[k].f(c); window.scrollTo({top:0}); }
+function navegacao(c, {voltar=true, proximo=true, textoProx, antesProx=null} = {}){
+  const n = document.createElement("div"); n.className = "nav";
+  n.innerHTML = `<div>${voltar ? `<button class="voltar">← ${tr("Voltar","Back")}</button>` : ""}</div><div>${proximo ? `<button class="prim prox">${textoProx || tr("Próximo →","Next →")}</button>` : ""}</div>`;
+  if (voltar) $(".voltar", n).onclick = () => ir(S.etapa - 1);
+  if (proximo) $(".prox", n).onclick = async () => { if (antesProx && !(await antesProx())) return; S.feitas.add(S.etapa); ir(S.etapa + 1); };
+  c.appendChild(n); return n;
+}
+function pilula(auto, aoMudar){
+  const s = document.createElement("label"); s.className = auto ? "auto" : "manual";
+  s.innerHTML = `<input type="checkbox" ${auto ? "checked" : ""}> ${auto ? tr("Automático","Automatic") : tr("Manual","Manual")}`;
+  $("input", s).onchange = e => aoMudar(e.target.checked); return s;
+}
+function linhaParam(c, nome, ajuda, auto, aoAuto, controle){
+  const l = document.createElement("div"); l.className = "campo";
+  l.innerHTML = `<div class="nome">${nome}</div><div class="pil"></div><div class="ctl"></div><div class="ajuda">${ajuda}</div>`;
+  if (auto !== null) $(".pil", l).appendChild(pilula(auto, aoAuto));
+  $(".ctl", l).appendChild(controle); c.appendChild(l); return l;
+}
+function entradaNum(valor, {min, max, passo=1, desativada=false, aoMudar}){
+  const e = document.createElement("input"); e.type = "number"; e.value = valor ?? ""; if (min != null) e.min = min; if (max != null) e.max = max;
+  e.step = passo; e.disabled = desativada; e.onchange = () => aoMudar(+e.value); return e;
+}
+// Navegador de pastas reutilizável (lista + caminho). opcoes: {aoEntrar(r)}
+async function navegador(el, inicial, {aoEntrar} = {}){
+  el.innerHTML = `<div class="lin"><input type="text" class="nvCam"><button class="peq nvAbrir">${tr("Abrir","Open")}</button></div>
+    <div class="lin nvAtalhos"></div><div class="lista nvLista"></div>`;
+  const listar = async (caminho) => {
+    try {
+      const r = await api("/api/pastas?caminho=" + encodeURIComponent(caminho || ""));
+      el.dataset.caminho = r.caminho; $(".nvCam", el).value = r.caminho;
+      $(".nvAtalhos", el).innerHTML = (r.pai ? `<button class="peq" data-c="${encodeURIComponent(r.pai)}">↑ ${tr("Pasta acima","Up")}</button>` : "") +
+        r.atalhos.map(a => `<button class="peq" data-c="${encodeURIComponent(a.caminho)}">${a.nome}</button>`).join("") +
+        r.unidades.map(u => `<button class="peq" data-c="${encodeURIComponent(u)}">${u}</button>`).join("");
+      $(".nvLista", el).innerHTML = r.pastas.map(p => `<div data-c="${encodeURIComponent(p.caminho)}"><span>📁 ${p.nome}</span><span class="badge ${p.resultado ? "res" : p.n_imagens ? "img" : ""}">${p.resultado ? tr("resultado Moby-DIC","Moby-DIC result") : p.n_imagens ? p.n_imagens + " " + tr("imagens","images") : ""}</span></div>`).join("")
+        || `<div><span class="nota">${tr("sem subpastas","no subfolders")}</span></div>`;
+      el.querySelectorAll("[data-c]").forEach(d => d.onclick = () => listar(decodeURIComponent(d.dataset.c)));
+      if (aoEntrar) aoEntrar(r);
+    } catch(e) { if (aoEntrar) aoEntrar({erro: e.message}); }
+  };
+  $(".nvAbrir", el).onclick = () => listar($(".nvCam", el).value);
+  $(".nvCam", el).onkeydown = e => { if (e.key === "Enter") listar($(".nvCam", el).value); };
+  await listar(inicial);
+}
+function escolherPasta(titulo, inicial){
+  return new Promise(res => {
+    const d = $("#dlgPasta"); $("#dlgTitulo").textContent = titulo; $("#dlgOk").textContent = tr("Escolher esta pasta","Choose this folder");
+    $("#dlgCancelar").textContent = tr("Cancelar","Cancel");
+    navegador($("#dlgCorpo"), inicial);
+    $("#dlgOk").onclick = () => { d.close(); res($("#dlgCorpo").dataset.caminho); };
+    $("#dlgCancelar").onclick = () => { d.close(); res(null); };
+    d.showModal();
+  });
+}
+
+// ------------------------------------------------------------------ 1. imagens
+async function etapaImagens(c){
+  c.innerHTML = `<div class="etapa"><h2>1. ${tr("Imagens","Images")}</h2><p class="lead">${tr("Escolha a pasta com a sequência de imagens do ensaio (PNG, TIFF 8/16 bits, BMP ou JPEG) e quais quadros entram na análise.","Choose the folder with the test image sequence (PNG, 8/16-bit TIFF, BMP or JPEG) and which frames to analyse.")}</p>
+    <div class="grid2">
+      <div class="card"><h3>${tr("Pasta","Folder")}</h3><div id="nav1"></div>
+        <div class="nav"><span class="nota" id="nAqui"></span><button id="usar" class="prim peq" disabled>${tr("Usar esta pasta","Use this folder")}</button></div>
+        <p class="nota">${tr("Clique numa pasta para entrar. O número em azul é a quantidade de imagens.","Click a folder to open it. The blue number is the image count.")}</p></div>
+      <div><div class="card" id="cardInfo"><h3>${tr("Sequência","Sequence")}</h3><p class="nota">${tr("Nenhuma pasta escolhida.","No folder selected.")}</p></div>
+        ${S.info ? "" : `<div class="card" id="cardEx"><h3>${tr("Sem imagens à mão? Experimente um exemplo","No images at hand? Try an example")}</h3>
+          <p class="nota">${tr("Sequências sintéticas com campo exato conhecido, as mesmas dos tutoriais da documentação. São gravadas na pasta de trabalho, em <code>examples</code>.","Synthetic sequences with a known exact field, the same ones used in the documentation tutorials. They are written to the working folder, under <code>examples</code>.")}</p>
+          <div class="exemplos" id="listaEx"></div></div>`}</div>
+    </div></div>`;
+  const nav = navegacao($(".etapa", c), {voltar:false, antesProx: async () => !!S.info});
+  $(".prox", nav).disabled = !S.info;
+  await navegador($("#nav1"), S.info ? S.info.pasta : S.prefs.ultima_pasta, {aoEntrar: r => {
+    if (r.erro){ $("#nAqui").textContent = r.erro; return; }
+    $("#nAqui").textContent = r.n_imagens ? `${r.n_imagens} ${tr("imagens nesta pasta","images in this folder")}` : tr("nenhuma imagem nesta pasta","no images in this folder");
+    $("#usar").disabled = r.n_imagens < 2;
+    $("#usar").onclick = async () => { S.sel = {inicio:1, fim:null, a_cada: r.n_imagens > 300 ? Math.ceil(r.n_imagens/250) : 1, auto:true}; S.roi.fonte = "auto"; S.feitas.clear(); await analisarPasta(r.caminho); };
+  }});
+  if (S.info) mostrarInfo(); else listarExemplos();
+}
+async function listarExemplos(){
+  const el = $("#listaEx"); if (!el) return;
+  const ex = await api("/api/exemplos").catch(() => []);
+  el.innerHTML = ex.map(e => `<button class="peq" data-n="${e.nome}">▶ ${tr(e.pt, e.en)}</button>`).join("");
+  el.querySelectorAll("button").forEach(b => b.onclick = () => abrirExemplo(b.dataset.n, b));
+}
+async function abrirExemplo(nome, botao){
+  if (botao){ botao.disabled = true; botao.textContent = tr("Gerando imagens…","Generating images…"); }
+  try {
+    const r = await api("/api/exemplo", {nome});
+    S.sel = {inicio:1, fim:null, a_cada:1, auto:true}; S.roi.fonte = "auto"; S.feitas.clear();
+    await analisarPasta(r.pasta);
+    const ce = $("#cardEx"); if (ce) ce.remove();
+    navegador($("#nav1"), r.pasta, {aoEntrar: () => {}});
+  } catch(e){ alert(e.message); if (botao) botao.disabled = false; }
+}
+async function analisarPasta(pasta){
+  $("#cardInfo").innerHTML = `<h3>${tr("Sequência","Sequence")}</h3><p class="nota">${tr("Analisando a sequência (bordas da amostra, speckle, foco)…","Analysing the sequence (specimen edges, speckle, focus)…")}</p>`;
+  try {
+    S.info = await api("/api/sugerir", {pasta, inicio:S.sel.inicio, fim:S.sel.fim, a_cada:S.sel.a_cada});
+    aplicarAutomaticos(); mostrarInfo(); desenharFluxo(); $(".prox").disabled = false;
+  } catch(e) { $("#cardInfo").innerHTML = `<h3>${tr("Sequência","Sequence")}</h3><div class="aviso">${tr("Não foi possível analisar: ","Could not analyse: ")}${e.message}</div>`; }
+}
+function sparkline(vals, rotulo){
+  const w = 300, h = 60, lg = v => Math.log(Math.max(v, 1e-6)), a = lg(Math.min(...vals)), b = lg(Math.max(...vals));
+  const pts = vals.map((v, i) => `${(i/(vals.length-1||1))*w},${h - 6 - ((lg(v) - a)/((b - a) || 1))*(h - 12)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline fill="none" stroke="var(--accent)" stroke-width="2" points="${pts}"/></svg><div class="nota">${rotulo}</div>`;
+}
+function mostrarInfo(){
+  const i = S.info, q = new URLSearchParams({pasta:i.pasta, inicio:S.sel.inicio, a_cada:S.sel.a_cada, largura:520, ...(S.sel.fim ? {fim:S.sel.fim} : {})});
+  $("#cardInfo").innerHTML = `<h3>${tr("Sequência","Sequence")}</h3>
+    <div class="kv"><span>${tr("Pasta","Folder")}</span><span style="word-break:break-all">${i.pasta}</span>
+      <span>${tr("Imagens na pasta","Images in folder")}</span><span>${i.n_imagens_pasta} · ${i.largura} × ${i.altura} px · ${i.modo}</span>
+      <span>${tr("Quadros analisados","Frames analysed")}</span><span><b>${i.n_quadros}</b> (${i.primeira} … ${i.ultima})</span></div>
+    <div class="campo" style="border:0"><div class="nome">${tr("Seleção de quadros","Frame selection")}</div><div class="pil"></div>
+      <div class="ctl lin" style="margin:0"><label>${tr("de","from")} <input type="number" id="sIni" min="1" value="${S.sel.inicio}"></label>
+      <label>${tr("até","to")} <input type="number" id="sFim" min="1" value="${S.sel.fim || i.n_imagens_pasta}"></label>
+      <label>${tr("a cada","every")} <input type="number" id="sCada" min="1" value="${S.sel.a_cada}"></label></div>
+      <div class="ajuda">${tr("Automático: todas as imagens, ou uma a cada N quando a pasta tem mais de 300 (≈ 250 quadros).","Automatic: all images, or one every N when the folder has more than 300 (≈ 250 frames).")}</div></div>
+    <div class="thumbs"><figure><img src="/api/imagem?${q}&i=0"><figcaption>${tr("primeiro quadro","first frame")}</figcaption></figure>
+      <figure><img src="/api/imagem?${q}&i=${i.n_quadros-1}"><figcaption>${tr("último quadro","last frame")}</figcaption></figure></div>
+    ${sparkline(i.nitidez, tr(`Nitidez nos quadros amostrados (escala log) · variação ${num(i.variacao_nitidez)}×`, `Sharpness of the sampled frames (log scale) · ${num(i.variacao_nitidez)}× variation`))}
+    ${i.variacao_nitidez > 3 ? `<div class="aviso">${tr(`O foco varia ${num(i.variacao_nitidez, 1)}× ao longo da sequência (refoco ou amostra saindo do plano). A igualação de nitidez será ativada automaticamente.`, `Focus varies ${num(i.variacao_nitidez, 1)}× along the sequence (refocusing or out-of-plane motion). Sharpness matching will be enabled automatically.`)}</div>` : `<div class="okbox">${tr("Foco estável ao longo da sequência.","Focus is stable along the sequence.")}</div>`}
+    <div class="nav"><span class="nota">${tr("Todos os parâmetros já têm valores automáticos.","All parameters already have automatic values.")}</span>
+      <button id="tudoAuto" class="peq">${tr("Tudo automático → Executar","All automatic → Run")}</button></div>`;
+  $("#tudoAuto").onclick = () => { [0,1,2,3,4,5].forEach(k => S.feitas.add(k)); ir(6); };
+  $("#cardInfo .pil").appendChild(pilula(S.sel.auto, v => { S.sel.auto = v; if (v){ S.sel = {inicio:1, fim:null, a_cada: i.n_imagens_pasta > 300 ? Math.ceil(i.n_imagens_pasta/250) : 1, auto:true}; analisarPasta(i.pasta); } else mostrarInfo(); }));
+  ["sIni","sFim","sCada"].forEach(id => { const e = $("#" + id); e.disabled = S.sel.auto; e.onchange = () => {
+    S.sel.inicio = Math.max(1, +$("#sIni").value); const f = +$("#sFim").value; S.sel.fim = f && f < i.n_imagens_pasta ? f : null;
+    S.sel.a_cada = Math.max(1, +$("#sCada").value); analisarPasta(i.pasta); }; });
+}
+
+// ------------------------------------------------------------------ 2. escala
+function etapaEscala(c){
+  const e = S.escala, ult = S.prefs.escala_um_px;
+  c.innerHTML = `<div class="etapa"><h2>2. ${tr("Escala","Scale")}</h2><p class="lead">${tr("Conversão de pixels para micrômetros, obtida da calibração da câmera/lente (por exemplo, fotografando uma régua ou um alvo de calibração). Afeta os deslocamentos e os eixos; as deformações não dependem dela.","Pixel-to-micrometre conversion from the camera/lens calibration (e.g. imaging a ruler or calibration target). It affects displacements and axes; strains do not depend on it.")}</p>
+    <div class="metodos">
+      <div class="metodo" data-m="auto"><div class="t">${tr("Último valor usado","Last value used")}</div><div class="d">${ult ? num(ult, 4) + " µm/px" : tr("nenhum ainda","none yet")}</div></div>
+      <div class="metodo" data-m="manual"><div class="t">${tr("Informar valor","Enter value")}</div><div class="d">${tr("µm por pixel desta montagem","µm per pixel for this setup")}</div></div>
+      <div class="metodo" data-m="pixels"><div class="t">${tr("Sem calibração","Uncalibrated")}</div><div class="d">${tr("resultados em pixels (deformações não mudam)","results in pixels (strains are unaffected)")}</div></div>
+    </div><div class="card" id="cEsc"></div></div>`;
+  c.querySelectorAll(".metodo").forEach(el => { const off = el.dataset.m === "auto" && !ult; el.classList.toggle("off", off);
+    el.classList.toggle("sel", el.dataset.m === e.modo); if (!off) el.onclick = () => { e.modo = el.dataset.m; if (e.modo === "auto") e.valor = ult; ir(1); }; });
+  const cc = $("#cEsc");
+  if (e.modo === "pixels") cc.innerHTML = `<p class="nota">${tr("Deslocamentos em px e eixos em px. Você pode reprocessar depois com a escala correta.","Displacements in px and axes in px. You can reprocess later with the correct scale.")}</p>`;
+  else linhaParam(cc, tr("µm por pixel","µm per pixel"), tr("Exemplo: 1,76 significa que cada pixel corresponde a 1,76 µm na amostra.","Example: 1.76 means each pixel corresponds to 1.76 µm on the specimen."), null, null,
+    entradaNum(e.valor, {min:0.0001, passo:0.0001, desativada:e.modo === "auto", aoMudar:v => { e.valor = v; }}));
+  navegacao($(".etapa", c), {antesProx: async () => { if (e.modo !== "pixels" && !(e.valor > 0)){ alert(tr("Informe a escala ou escolha 'Sem calibração'.","Enter the scale or choose 'Uncalibrated'.")); return false; } return true; }});
+}
+
+// ------------------------------------------------------------------ 3. ROI
+function etapaROI(c){
+  const i = S.info;
+  c.innerHTML = `<div class="etapa"><h2>3. ${tr("Região de interesse (ROI)","Region of interest (ROI)")}</h2><p class="lead">${tr("Arraste para desenhar um retângulo novo, arraste o retângulo para movê-lo ou puxe os cantos/lados. Coordenadas em pixels da imagem (origem no canto superior esquerdo).","Drag to draw a new rectangle, drag the rectangle to move it or pull its corners/sides. Coordinates in image pixels (origin at the top-left corner).")}</p>
+    <div class="card"><div class="lin" id="roiBotoes"></div>
+      <div class="lin"><label>x₁ <input type="number" id="rx1"></label><label>y₁ <input type="number" id="ry1"></label>
+        <label>x₂ <input type="number" id="rx2"></label><label>y₂ <input type="number" id="ry2"></label><span class="nota" id="roiInfo"></span>
+        <label style="margin-left:auto">${tr("mostrar","show")} <select id="roiQuadro"><option value="0">${tr("primeiro quadro","first frame")}</option><option value="${i.n_quadros-1}">${tr("último quadro","last frame")}</option></select></label></div>
+      <canvas class="editor" id="ed"></canvas>
+      <p class="nota">${tr(`Linha tracejada: bordas da amostra detectadas ao longo da sequência. Automático: essas bordas menos uma margem de ${Math.max(20, Math.floor(i.subset_px/2) + 8)} px e 10 % da largura nas laterais (espaço para o deslocamento na direção da carga, eixo x). Se não houver contraste amostra/fundo, usa a imagem inteira menos as margens.`,
+        `Dashed line: specimen edges detected along the sequence. Automatic: those edges minus a ${Math.max(20, Math.floor(i.subset_px/2) + 8)} px margin and 10 % of the width at the sides (room for displacement along the loading direction, x). Without specimen/background contrast, the whole image minus the margins is used.`)}</p></div></div>`;
+  const bot = $("#roiBotoes");
+  const fonte = document.createElement("span"); fonte.className = S.roi.fonte === "auto" ? "auto" : "manual";
+  fonte.textContent = {auto:tr("Automático","Automatic"), manual:tr("Manual","Manual"), inteira:tr("Imagem inteira","Whole image")}[S.roi.fonte]; bot.appendChild(fonte);
+  const botao = (t, f) => { const b = document.createElement("button"); b.className = "peq"; b.textContent = t; b.onclick = f; bot.appendChild(b); };
+  botao(tr("Automático","Automatic"), () => { S.roi.fonte = "auto"; S.roi.img = roiSuperior(i.roi); ir(2); });
+  botao(tr("Imagem inteira","Whole image"), () => { S.roi.fonte = "inteira"; const m = Math.floor(S.met.subset/2) + 8; S.roi.img = [m, m, i.largura-1-m, i.altura-1-m]; ir(2); });
+  editorROI($("#ed"), 0);
+  $("#roiQuadro").onchange = e => editorROI($("#ed"), +e.target.value);
+  navegacao($(".etapa", c), {antesProx: async () => { const [x1,y1,x2,y2] = S.roi.img; if (x2-x1 < 3*S.met.subset || y2-y1 < 3*S.met.subset){ alert(tr("ROI muito pequena para o subset.","ROI too small for the subset.")); return false; } return true; }});
+}
+function editorROI(cv, quadro, extra){
+  const i = S.info, ctx = cv.getContext("2d"), im = new Image();
+  im.src = "/api/imagem?" + new URLSearchParams({pasta:i.pasta, inicio:S.sel.inicio, a_cada:S.sel.a_cada, largura:1100, i:quadro, ...(S.sel.fim ? {fim:S.sel.fim} : {})});
+  let esc = 1, arr = null;
+  const campos = ["rx1","ry1","rx2","ry2"].map(id => document.getElementById(id));
+  const unid = escalaAtual() ? "mm" : "px", f = escalaAtual() ? escalaAtual()/1000 : 1;
+  const sincronizar = () => { if (!campos[0]) return; S.roi.img.forEach((v, k) => campos[k].value = Math.round(v));
+    const [x1,y1,x2,y2] = S.roi.img, info = document.getElementById("roiInfo");
+    if (info) info.textContent = `${Math.round(x2-x1)} × ${Math.round(y2-y1)} px` + (unid === "mm" ? ` = ${num((x2-x1)*f)} × ${num((y2-y1)*f)} mm` : ""); };
+  const normalizar = () => { let [x1,y1,x2,y2] = S.roi.img; if (x2 < x1) [x1,x2] = [x2,x1]; if (y2 < y1) [y1,y2] = [y2,y1];
+    S.roi.img = [Math.max(0,x1), Math.max(0,y1), Math.min(i.largura-1,x2), Math.min(i.altura-1,y2)]; };
+  campos.forEach((e, k) => { if (e && !extra) e.onchange = () => { S.roi.img[k] = +e.value; S.roi.fonte = "manual"; normalizar(); desenhar(); sincronizar(); }; });
+  function desenhar(){
+    if (!im.naturalWidth) return;
+    const w = cv.clientWidth || 900, dpr = window.devicePixelRatio || 1, h = w*i.altura/i.largura;
+    cv.style.height = h + "px"; cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+    esc = w/i.largura; ctx.drawImage(im, 0, 0, w, h);
+    const bt = roiSuperior(i.bordas_amostra);
+    ctx.setLineDash([6,4]); ctx.strokeStyle = "#ffd34d"; ctx.lineWidth = 1.2; ctx.strokeRect(bt[0]*esc, bt[1]*esc, (bt[2]-bt[0])*esc, (bt[3]-bt[1])*esc); ctx.setLineDash([]);
+    const [x1,y1,x2,y2] = S.roi.img.map(v => v*esc);
+    ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.fillRect(0,0,w,y1); ctx.fillRect(0,y2,w,h-y2); ctx.fillRect(0,y1,x1,y2-y1); ctx.fillRect(x2,y1,w-x2,y2-y1);
+    ctx.strokeStyle = "#48defa"; ctx.lineWidth = 2; ctx.strokeRect(x1, y1, x2-x1, y2-y1);
+    if (!extra){ ctx.fillStyle = "#48defa"; [[x1,y1],[x2,y1],[x1,y2],[x2,y2]].forEach(([a,b]) => ctx.fillRect(a-5, b-5, 10, 10)); }
+    if (extra) extra(ctx, esc);
+  }
+  im.onload = () => { desenhar(); sincronizar(); };
+  if (cv._ro) cv._ro.disconnect(); cv._ro = new ResizeObserver(desenhar); cv._ro.observe(cv);
+  if (extra) { cv.style.cursor = "default"; return; }
+  const ponto = ev => { const r = cv.getBoundingClientRect(); return [(ev.clientX - r.left)/esc, (ev.clientY - r.top)/esc]; };
+  cv.onpointerdown = ev => { try { cv.setPointerCapture(ev.pointerId); } catch(e) {} const [x, y] = ponto(ev), [x1,y1,x2,y2] = S.roi.img, tol = 9/esc;
+    const perto = (a, b) => Math.abs(a - b) < tol, dentro = x > x1 && x < x2 && y > y1 && y < y2;
+    const lados = {l: perto(x, x1) && y > y1-tol && y < y2+tol, r: perto(x, x2) && y > y1-tol && y < y2+tol,
+                   t: perto(y, y1) && x > x1-tol && x < x2+tol, b: perto(y, y2) && x > x1-tol && x < x2+tol};
+    if (lados.l || lados.r || lados.t || lados.b) arr = {tipo:"lado", lados, ini:[...S.roi.img]};
+    else if (dentro) arr = {tipo:"mover", x, y, ini:[...S.roi.img]};
+    else arr = {tipo:"novo", x, y}; };
+  cv.onpointermove = ev => { const [x, y] = ponto(ev);
+    if (!arr){ const [x1,y1,x2,y2] = S.roi.img, tol = 9/esc, borda = Math.abs(x-x1)<tol||Math.abs(x-x2)<tol||Math.abs(y-y1)<tol||Math.abs(y-y2)<tol;
+      cv.style.cursor = borda ? "nwse-resize" : (x>x1&&x<x2&&y>y1&&y<y2 ? "move" : "crosshair"); return; }
+    S.roi.fonte = "manual";
+    if (arr.tipo === "novo") S.roi.img = [arr.x, arr.y, x, y];
+    else if (arr.tipo === "mover"){ const [a,b,c2,d] = arr.ini, w = c2-a, h = d-b;
+      const nx = Math.max(0, Math.min(i.largura-1-w, a + x - arr.x)), ny = Math.max(0, Math.min(i.altura-1-h, b + y - arr.y)); S.roi.img = [nx, ny, nx+w, ny+h]; }
+    else { const r = [...arr.ini]; if (arr.lados.l) r[0] = x; if (arr.lados.r) r[2] = x; if (arr.lados.t) r[1] = y; if (arr.lados.b) r[3] = y; S.roi.img = r; }
+    desenhar(); sincronizar(); };
+  cv.onpointerup = () => { if (arr){ normalizar(); arr = null; desenhar(); sincronizar();
+    const f2 = document.querySelector("#roiBotoes span"); if (f2){ f2.className = "manual"; f2.textContent = tr("Manual","Manual"); } } };
+}
+
+// ------------------------------------------------------------------ 4. método e malha
+function etapaMetodo(c){
+  const i = S.info, m = S.met, mudic = S.app.mudic;
+  c.innerHTML = `<div class="etapa"><h2>4. ${tr("Método e malha","Method and grid")}</h2><p class="lead">${tr("Algoritmo de correlação e tamanho da grade de medição.","Correlation algorithm and measurement grid size.")}</p>
+    <div class="metodos">
+      <div class="metodo" data-t="subsets"><div class="t">${tr("DIC local por subsets","Local subset DIC")} <span class="tag">${tr("recomendado","recommended")}</span></div><div class="d">${tr("IC-GN com ZNSSD e subset afim. Rápido e robusto a refoco, saltos e perda de pontos.","IC-GN with ZNSSD and affine subsets. Fast and robust to refocusing, jumps and lost points.")}</div></div>
+      <div class="metodo" data-t="q4"><div class="t">muDIC · ${tr("malha","mesh")} Q4</div><div class="d">${tr("DIC global por elementos finitos bilineares (deformação constante por elemento).","Global finite-element DIC with bilinear elements (constant strain per element).")}${mudic ? "" : "<br><b>" + tr("muDIC não instalado","muDIC not installed") + "</b>"}</div></div>
+      <div class="metodo" data-t="spline"><div class="t">muDIC · B-spline</div><div class="d">${tr("Superfície B-spline única: campo muito suave, resolução limitada pela memória.","Single B-spline surface: very smooth field, resolution limited by memory.")}${mudic ? "" : "<br><b>" + tr("muDIC não instalado","muDIC not installed") + "</b>"}</div></div>
+    </div>
+    <div class="grid2"><div class="card" id="cPar"></div><div class="card"><h3>${tr("Pré-visualização","Preview")}</h3><canvas class="editor" id="edM"></canvas><p class="nota" id="notaGrade"></p></div></div></div>`;
+  c.querySelectorAll(".metodo").forEach(e => { const off = e.dataset.t !== "subsets" && !mudic; e.classList.toggle("off", off);
+    e.classList.toggle("sel", e.dataset.t === m.tipo);
+    if (!off) e.onclick = () => { m.tipo = e.dataset.t; S.ref.modo = m.tipo === "subsets" ? "automatica" : "a_cada"; ir(3); }; });
+  const p = $("#cPar");
+  if (m.tipo === "subsets"){
+    p.innerHTML = `<h3>${tr("Parâmetros dos subsets","Subset parameters")}</h3>`;
+    linhaParam(p, tr("Tamanho do subset (px)","Subset size (px)"), tr(`Automático: ≈ 3,25 diâmetros de speckle (speckle medido: ${num(i.speckle_px, 1)} px) → ${i.subset_px} px. Maior = menos ruído e menos resolução.`, `Automatic: ≈ 3.25 speckle diameters (measured speckle: ${num(i.speckle_px, 1)} px) → ${i.subset_px} px. Larger = less noise, less resolution.`),
+      m.a_subset, v => { m.a_subset = v; aplicarAutomaticos(); ir(3); }, entradaNum(m.subset, {min:9, max:101, passo:2, desativada:m.a_subset, aoMudar:v => { m.subset = v % 2 ? v : v + 1; ir(3); }}));
+    linhaParam(p, tr("Passo da grade (px)","Grid step (px)"), tr(`Automático: ≈ subset/5 → ${i.passo_px} px. Distância entre pontos medidos.`, `Automatic: ≈ subset/5 → ${i.passo_px} px. Distance between measured points.`),
+      m.a_passo, v => { m.a_passo = v; aplicarAutomaticos(); ir(3); }, entradaNum(m.passo, {min:1, max:50, desativada:m.a_passo, aoMudar:v => { m.passo = v; ir(3); }}));
+    linhaParam(p, tr("Janela de deformação (pontos)","Strain window (points)"), tr("Automático: 5. A deformação vem de um ajuste de plano aos deslocamentos numa janela janela × janela; maior suaviza.","Automatic: 5. Strain comes from a plane fit to the displacements in a window × window neighbourhood; larger smooths more."),
+      m.a_janela, v => { m.a_janela = v; aplicarAutomaticos(); ir(3); }, entradaNum(m.janela, {min:3, max:21, passo:2, desativada:m.a_janela, aoMudar:v => { m.janela = v % 2 ? v : v + 1; ir(3); }}));
+  } else if (m.tipo === "q4"){
+    p.innerHTML = `<h3>${tr("Malha Q4","Q4 mesh")}</h3>`;
+    linhaParam(p, tr("Tamanho do elemento (px)","Element size (px)"), tr(`Automático: ≈ subset + 5 → ${i.elemento_q4_px} px. Abaixo de ~25 px o muDIC pode parar ao atualizar a referência.`, `Automatic: ≈ subset + 5 → ${i.elemento_q4_px} px. Below ~25 px muDIC may stop when updating the reference.`),
+      m.a_elemento, v => { m.a_elemento = v; aplicarAutomaticos(); ir(3); }, entradaNum(m.elemento, {min:10, max:200, desativada:m.a_elemento, aoMudar:v => { m.elemento = v; ir(3); }}));
+    p.insertAdjacentHTML("beforeend", `<div class="aviso">${tr("O muDIC atualiza a referência a cada N quadros e não tem recuperação de pontos nem igualação de nitidez.","muDIC updates the reference every N frames and has no point recovery or sharpness matching.")}</div>`);
+  } else {
+    p.innerHTML = `<h3>${tr("Malha B-spline","B-spline mesh")}</h3>`;
+    const ctl = document.createElement("span"); ctl.className = "lin"; ctl.style.margin = 0;
+    ctl.appendChild(entradaNum(m.cpx, {min:4, max:30, desativada:m.a_cp, aoMudar:v => { m.cpx = v; ir(3); }}));
+    ctl.insertAdjacentHTML("beforeend", " × "); ctl.appendChild(entradaNum(m.cpy, {min:4, max:30, desativada:m.a_cp, aoMudar:v => { m.cpy = v; ir(3); }}));
+    linhaParam(p, tr("Pontos de controle (x × y)","Control points (x × y)"), tr("Automático: 10 × 8 (limite prático de memória, ~3 GB).","Automatic: 10 × 8 (practical memory limit, ~3 GB)."),
+      m.a_cp, v => { m.a_cp = v; if (v){ m.cpx = 10; m.cpy = 8; } ir(3); }, ctl);
+  }
+  const [x1,y1,x2,y2] = S.roi.img, e = escalaAtual();
+  const t = s => s < 90 ? num(s, 0) + " s" : num(s/60, 1) + " min";
+  let nota;
+  if (m.tipo === "subsets"){
+    const np = (Math.floor((x2-x1)/m.passo)+1)*(Math.floor((y2-y1)/m.passo)+1), res = m.subset + (m.janela-1)*m.passo;
+    nota = tr(`${np.toLocaleString("pt-BR")} pontos · resolução espacial da deformação ≈ ${res} px${e ? ` (${num(res*e, 0)} µm)` : ""} · tempo estimado ≈ ${t(np*nQuadros()*2.2e-5*8/Math.max(2, S.app.nucleos || 8))} para ${nQuadros()} quadros`,
+      `${np.toLocaleString("en-US")} points · strain spatial resolution ≈ ${res} px${e ? ` (${num(res*e, 0)} µm)` : ""} · estimated time ≈ ${t(np*nQuadros()*2.2e-5*8/Math.max(2, S.app.nucleos || 8))} for ${nQuadros()} frames`);
+  } else if (m.tipo === "q4"){
+    const nx = Math.round((x2-x1)/m.elemento), ny = Math.round((y2-y1)/m.elemento);
+    nota = tr(`${nx} × ${ny} elementos · tempo estimado ≈ ${t(nQuadros()*2.3)}`, `${nx} × ${ny} elements · estimated time ≈ ${t(nQuadros()*2.3)}`);
+  } else nota = tr(`${m.cpx} × ${m.cpy} pontos de controle · tempo estimado ≈ ${t(nQuadros()*12)}`, `${m.cpx} × ${m.cpy} control points · estimated time ≈ ${t(nQuadros()*12)}`);
+  $("#notaGrade").textContent = nota;
+  editorROI($("#edM"), 0, (ctx, esc) => {
+    const [a,b,cc,d] = S.roi.img; ctx.strokeStyle = "rgba(72,222,250,.9)"; ctx.fillStyle = "rgba(72,222,250,.8)";
+    if (m.tipo === "subsets"){
+      const salto = Math.max(1, Math.ceil(4/(m.passo*esc)));
+      for (let y = b; y <= d; y += m.passo*salto) for (let x = a; x <= cc; x += m.passo*salto) ctx.fillRect(x*esc-0.75, y*esc-0.75, 1.5, 1.5);
+      const cx = (a+cc)/2, cy = (b+d)/2, h = m.subset/2; ctx.strokeStyle = "#ff4d6d"; ctx.lineWidth = 2; ctx.strokeRect((cx-h)*esc, (cy-h)*esc, m.subset*esc, m.subset*esc);
+      ctx.fillStyle = "#ff4d6d"; ctx.font = "12px system-ui"; ctx.fillText(`subset ${m.subset} px`, (cx+h)*esc + 4, (cy-h)*esc + 10);
+    } else if (m.tipo === "q4"){
+      const nx = Math.round((cc-a)/m.elemento), ny = Math.round((d-b)/m.elemento); ctx.lineWidth = 0.8;
+      for (let k = 0; k <= nx; k++){ const x = (a + k*(cc-a)/nx)*esc; ctx.beginPath(); ctx.moveTo(x, b*esc); ctx.lineTo(x, d*esc); ctx.stroke(); }
+      for (let k = 0; k <= ny; k++){ const y = (b + k*(d-b)/ny)*esc; ctx.beginPath(); ctx.moveTo(a*esc, y); ctx.lineTo(cc*esc, y); ctx.stroke(); }
+    } else for (let ky = 0; ky < m.cpy; ky++) for (let kx = 0; kx < m.cpx; kx++){ ctx.beginPath(); ctx.arc((a + kx*(cc-a)/(m.cpx-1))*esc, (b + ky*(d-b)/(m.cpy-1))*esc, 3, 0, 7); ctx.fill(); }
+  });
+  navegacao($(".etapa", c));
+}
+
+// ------------------------------------------------------------------ 5. referência
+function etapaReferencia(c){
+  const i = S.info, r = S.ref, sub = S.met.tipo === "subsets";
+  c.innerHTML = `<div class="etapa"><h2>5. ${tr("Referência e robustez","Reference and robustness")}</h2><p class="lead">${tr("Como a imagem de referência é atualizada ao longo do ensaio e como tratar quadros difíceis.","How the reference image is updated during the test and how difficult frames are handled.")}</p>
+    <div class="metodos">
+      <div class="metodo" data-m="automatica"><div class="t">${tr("Automática","Automatic")} <span class="tag">${tr("recomendado","recommended")}</span></div><div class="d">${tr("Troca quando a correlação com a referência piora. Poucas trocas = pouco erro acumulado.","Updates when the correlation with the reference degrades. Few updates = little accumulated error.")}</div></div>
+      <div class="metodo" data-m="a_cada"><div class="t">${tr("A cada N quadros","Every N frames")}</div><div class="d">${tr("Troca em intervalos fixos. Única opção do muDIC.","Updates at fixed intervals. Only option for muDIC.")}</div></div>
+      <div class="metodo" data-m="fixa"><div class="t">${tr("Fixa no primeiro quadro","Fixed at the first frame")}</div><div class="d">${tr("Sem acúmulo de erro; para deformações pequenas (≲ 2 %).","No accumulated error; for small strains (≲ 2 %).")}</div></div>
+    </div><div class="card" id="cRef"></div></div>`;
+  c.querySelectorAll(".metodo").forEach(e => { const ok = sub || e.dataset.m === "a_cada"; e.classList.toggle("off", !ok);
+    e.classList.toggle("sel", e.dataset.m === r.modo); if (ok) e.onclick = () => { r.modo = e.dataset.m; ir(4); }; });
+  const p = $("#cRef");
+  if (r.modo === "a_cada") linhaParam(p, tr("Trocar a cada (quadros)","Update every (frames)"), tr("A nova referência é o quadro anterior ao da troca.","The new reference is the frame before the update."), null, null,
+    entradaNum(r.a_cada, {min:1, max:1000, aoMudar:v => r.a_cada = v}));
+  if (sub){
+    const chk = (v, f) => { const e = document.createElement("input"); e.type = "checkbox"; e.checked = v; e.onchange = () => f(e.checked); return e; };
+    const ig = chk(r.igualar, v => r.igualar = v); ig.disabled = r.a_igualar;
+    linhaParam(p, tr("Igualar nitidez em todo quadro","Match sharpness on every frame"), tr(`Automático: ${i.igualar_nitidez ? "ativado" : "desativado"} (a nitidez varia ${num(i.variacao_nitidez, 1)}×; ativa acima de 3×). Filtra a imagem mais nítida até a nitidez da outra. Quadros com refoco recebem essa tentativa extra mesmo desativado.`, `Automatic: ${i.igualar_nitidez ? "on" : "off"} (sharpness varies ${num(i.variacao_nitidez, 1)}×; enabled above 3×). Blurs the sharper image to the sharpness of the other one. Refocused frames get this extra attempt even when off.`),
+      r.a_igualar, v => { r.a_igualar = v; aplicarAutomaticos(); ir(4); }, ig);
+    linhaParam(p, tr("Resgatar pontos perdidos","Rescue lost points"), tr("Pontos que falham contra a referência são correlacionados contra o quadro anterior.","Points that fail against the reference are correlated against the previous frame."), null, null, chk(r.resgate, v => r.resgate = v));
+    const av = document.createElement("details"); av.innerHTML = `<summary class="nota" style="cursor:pointer;margin-top:8px">${tr("Limiares avançados","Advanced thresholds")}</summary><div class="cAv"></div>`; p.appendChild(av);
+    const cav = $(".cAv", av);
+    linhaParam(cav, tr("Limiares","Thresholds"), tr("Automático: ZNCC mediana 0,98, ZNCC p05 0,95, falhas 0,3 %, ZNCC mínima por ponto 0,8.","Automatic: median ZNCC 0.98, p05 ZNCC 0.95, failures 0.3 %, minimum ZNCC per point 0.8."), r.a_avancado, v => { r.a_avancado = v; aplicarAutomaticos(); ir(4); }, document.createElement("span"));
+    [["zncc_ref", tr("ZNCC mediana para trocar","Median ZNCC to update"), 0.01], ["zncc_ref_p05", tr("ZNCC p05 para trocar","p05 ZNCC to update"), 0.01], ["falha_ref", tr("Fração de falhas para trocar","Failure fraction to update"), 0.001], ["zncc_min", tr("ZNCC mínima aceita por ponto","Minimum accepted ZNCC per point"), 0.01]]
+      .forEach(([k, n, ps]) => linhaParam(cav, n, "", null, null, entradaNum(r[k], {min:0, max:1, passo:ps, desativada:r.a_avancado, aoMudar:v => r[k] = v})));
+    av.open = !r.a_avancado;
+  }
+  navegacao($(".etapa", c));
+}
+
+// ------------------------------------------------------------------ 6. saída
+function etapaSaida(c){
+  const p = S.pos;
+  if (!p.trabalho) p.trabalho = S.prefs.pasta_trabalho;
+  c.innerHTML = `<div class="etapa"><h2>6. ${tr("Saída","Output")}</h2><p class="lead">${tr("Onde os resultados são gravados e como o visualizador abre.","Where results are written and how the viewer opens.")}</p><div class="card" id="cPos"></div></div>`;
+  const cp = $("#cPos");
+  const trab = document.createElement("span"); trab.className = "lin"; trab.style.margin = 0;
+  trab.innerHTML = `<code style="word-break:break-all">${p.trabalho}</code> <button class="peq">${tr("Alterar…","Change…")}</button>`;
+  $("button", trab).onclick = async () => { const r = await escolherPasta(tr("Pasta de trabalho","Working folder"), p.trabalho); if (r){ p.trabalho = r; ir(5); } };
+  linhaParam(cp, tr("Pasta de trabalho","Working folder"), tr("Cada análise cria uma subpasta aqui.","Each analysis creates a subfolder here."), null, null, trab);
+  const sd = document.createElement("input"); sd.type = "text"; sd.value = p.saida; sd.disabled = p.a_saida; sd.onchange = () => p.saida = sd.value.trim();
+  linhaParam(cp, tr("Nome da análise","Analysis name"), tr("Automático: <pasta das imagens>_<data-hora>.","Automatic: <image folder>_<date-time>."), p.a_saida, v => { p.a_saida = v; aplicarAutomaticos(); ir(5); }, sd);
+  const idi = document.createElement("select"); idi.innerHTML = `<option value="pt">Português</option><option value="en">English</option>`; idi.value = p.idioma; idi.onchange = () => p.idioma = idi.value;
+  linhaParam(cp, tr("Idioma inicial do visualizador","Viewer initial language"), tr("Pode ser trocado depois na própria página.","Can be changed later on the page itself."), null, null, idi);
+  const cm = document.createElement("select"); cm.innerHTML = ["jet","whitejet","turbo","viridis","plasma","inferno","magma","cividis","coolwarm","RdBu_r","seismic","bwr","gray"].map(x => `<option>${x}</option>`).join(""); cm.value = p.cmap; cm.onchange = () => p.cmap = cm.value;
+  linhaParam(cp, tr("Colormap inicial","Initial colormap"), tr("Pode ser trocado depois.","Can be changed later."), null, null, cm);
+  navegacao($(".etapa", c), {antesProx: async () => { if (!/^[\w.\- ]+$/.test(p.saida)){ alert(tr("Nome inválido: use letras, números, espaço, ponto, hífen ou sublinhado.","Invalid name: use letters, digits, space, dot, hyphen or underscore.")); return false; } return true; }});
+}
+
+// ------------------------------------------------------------------ 7. executar
+function configuracao(){
+  const i = S.info, m = S.met, r = S.ref, p = S.pos;
+  return {pasta:i.pasta, n_quadros:i.n_quadros, selecao:{inicio:S.sel.inicio, fim:S.sel.fim, a_cada:S.sel.a_cada},
+    escala_um_px:escalaAtual(), roi:roiInferior(), roi_imagem:S.roi.img,
+    metodo:{tipo:m.tipo, subset_px:m.subset, passo_px:m.passo, janela_deformacao:m.janela, elemento_px:m.elemento, pontos_controle:[m.cpx, m.cpy]},
+    referencia:{modo:r.modo, a_cada:r.a_cada, zncc_ref:r.zncc_ref, zncc_ref_p05:r.zncc_ref_p05, falha_ref:r.falha_ref, zncc_min:r.zncc_min, igualar_nitidez:r.igualar, resgate:r.resgate},
+    pos:{idioma:p.idioma, cmap:p.cmap}, pasta_trabalho:p.trabalho, saida:p.saida,
+    origem:{selecao:S.sel.auto, escala:S.escala.modo, roi:S.roi.fonte, subset:m.a_subset, passo:m.a_passo, janela:m.a_janela}};
+}
+let timerStatus = null;
+const ETAPA_TXT = {correlacao:["Correlação","Correlation"], visualizador:["Gerando o visualizador","Building the viewer"], concluida:["Concluída","Finished"], cancelada:["Cancelada","Cancelled"]};
+function etapaExecutar(c){
+  const i = S.info, m = S.met, r = S.ref, p = S.pos, o = a => `<span class="orig ${a ? "a" : "m"}">${a ? "auto" : "manual"}</span>`;
+  const [x1,y1,x2,y2] = S.roi.img.map(Math.round);
+  const metTxt = m.tipo === "subsets" ? `${tr("DIC por subsets","Subset DIC")} · subset ${m.subset} px ${o(m.a_subset)} · ${tr("passo","step")} ${m.passo} px ${o(m.a_passo)} · ${tr("janela","window")} ${m.janela} ${o(m.a_janela)}`
+    : m.tipo === "q4" ? `muDIC Q4 · ${tr("elemento","element")} ${m.elemento} px ${o(m.a_elemento)}` : `muDIC B-spline · ${m.cpx} × ${m.cpy} ${o(m.a_cp)}`;
+  const refTxt = {automatica:tr("automática","automatic"), a_cada:tr(`a cada ${r.a_cada} quadros`, `every ${r.a_cada} frames`), fixa:tr("fixa no primeiro quadro","fixed at the first frame")}[r.modo];
+  const escTxt = escalaAtual() ? `${num(escalaAtual(), 4)} µm/px ${o(S.escala.modo === "auto")}` : tr("sem calibração (pixels)","uncalibrated (pixels)");
+  c.innerHTML = `<div class="etapa"><h2>7. ${tr("Executar","Run")}</h2><p class="lead">${tr("Confira a configuração e inicie. A análise roda neste computador.","Check the configuration and start. The analysis runs on this computer.")}</p>
+    <div class="card"><table class="resumo">
+      <tr><td>${tr("Imagens","Images")}</td><td>${i.pasta}<br>${i.n_quadros} ${tr("quadros","frames")} (${S.sel.inicio}–${S.sel.fim || i.n_imagens_pasta}, ${tr("a cada","every")} ${S.sel.a_cada}) ${o(S.sel.auto)}</td></tr>
+      <tr><td>${tr("Escala","Scale")}</td><td>${escTxt}</td></tr>
+      <tr><td>ROI (px)</td><td>x ${x1}–${x2}, y ${y1}–${y2} · ${x2-x1} × ${y2-y1} px ${o(S.roi.fonte === "auto")}</td></tr>
+      <tr><td>${tr("Método","Method")}</td><td>${metTxt}</td></tr>
+      <tr><td>${tr("Referência","Reference")}</td><td>${refTxt}${m.tipo === "subsets" ? ` · ${tr("igualar nitidez","sharpness matching")}: ${r.igualar ? tr("sim","yes") : tr("não","no")} ${o(r.a_igualar)} · ${tr("resgate","rescue")}: ${r.resgate ? tr("sim","yes") : tr("não","no")}` : ""}</td></tr>
+      <tr><td>${tr("Saída","Output")}</td><td>${p.trabalho}\\${p.saida}<br>${tr("visualizador","viewer")} ${p.idioma.toUpperCase()}, ${p.cmap}</td></tr></table>
+      <div class="nav"><button id="voltar7">← ${tr("Voltar","Back")}</button><div><button id="cancelar" hidden>${tr("Cancelar","Cancel")}</button> <button class="prim" id="rodar">▶ ${tr("Iniciar análise","Start analysis")}</button></div></div></div>
+    <div class="card" id="cProg" hidden><h3 id="etapaTxt"></h3><progress id="barra" value="0" max="1"></progress><div class="nota" id="progTxt"></div><pre class="log" id="log"></pre>
+      <div class="nav"><button class="peq" id="abrirPasta" hidden>${tr("Abrir pasta dos resultados","Open results folder")}</button><button class="prim" id="abrirVis" hidden>${tr("Abrir no visualizador →","Open in the viewer →")}</button></div></div></div>`;
+  $("#voltar7").onclick = () => ir(5);
+  $("#rodar").onclick = async () => { try { const r2 = await api("/api/executar", configuracao()); S.resultado = r2.saida; $("#rodar").disabled = true; acompanhar(); } catch(e) { alert(e.message); } };
+  $("#cancelar").onclick = () => api("/api/cancelar", {});
+  $("#abrirVis").onclick = () => { S.feitas.add(6); ir(7); };
+  $("#abrirPasta").onclick = () => api("/api/abrir_pasta", {pasta:S.resultado});
+  acompanhar(true);
+}
+async function acompanhar(soUmaVez){
+  clearInterval(timerStatus);
+  const atualizar = async () => {
+    const s = await api("/api/status");
+    $("#cabStatus").textContent = s.estado === "rodando" ? tr("Análise em andamento…","Analysis running…") : "";
+    const card = $("#cProg"); if (!card || s.estado === "parada") return s;
+    card.hidden = false;
+    const et = ETAPA_TXT[s.etapa]; $("#etapaTxt").textContent = et ? tr(...et) : tr("Erro: ","Error: ") + s.etapa;
+    $("#barra").max = s.total; $("#barra").value = s.etapa === "correlacao" ? s.progresso : s.total;
+    $("#progTxt").textContent = s.etapa === "correlacao" ? tr(`quadro ${s.progresso} de ${s.total}`, `frame ${s.progresso} of ${s.total}`) : "";
+    const lg = $("#log"), fim = lg.scrollTop + lg.clientHeight >= lg.scrollHeight - 20; lg.textContent = s.log.join("\n"); if (fim) lg.scrollTop = lg.scrollHeight;
+    $("#cancelar").hidden = s.estado !== "rodando"; $("#rodar").disabled = s.estado === "rodando";
+    if (s.estado === "concluida"){ S.resultado = s.saida; $("#abrirVis").hidden = false; $("#abrirPasta").hidden = false; S.feitas.add(6); desenharFluxo(); }
+    return s;
+  };
+  const s = await atualizar();
+  if (s.estado === "rodando" || !soUmaVez) timerStatus = setInterval(async () => { const e = await atualizar(); if (e.estado !== "rodando") clearInterval(timerStatus); }, 1000);
+}
+
+// ------------------------------------------------------------------ 8. visualizar
+async function etapaVisualizar(c){
+  c.innerHTML = `<div class="etapa" style="max-width:none"><h2>8. ${tr("Visualizar","View")}</h2>
+    <div class="lin"><label>${tr("Resultado","Result")} <select id="resSel"></select></label>
+      <button class="peq" id="abrirOutro">${tr("Abrir resultado de outra pasta…","Open a result from another folder…")}</button>
+      <a id="novaAba" target="_blank">${tr("abrir em nova aba ↗","open in a new tab ↗")}</a><button class="peq" id="pastaRes">${tr("abrir pasta","open folder")}</button><span class="nota" id="resInfo"></span></div>
+    <div class="galeria nota" id="galeria"></div><iframe class="vis" id="vis"></iframe></div>`;
+  $("#abrirOutro").onclick = async () => { const p = await escolherPasta(tr("Pasta de um resultado do Moby-DIC","Folder of a Moby-DIC result"), S.prefs.pasta_trabalho);
+    if (!p) return; try { const r = await api("/api/abrir_resultado", {pasta:p}); S.resultado = r.caminho; ir(7); } catch(e) { alert(e.message); } };
+  const lista = await api("/api/resultados"), sel = $("#resSel");
+  if (!lista.length){ $("#vis").remove(); $("#novaAba").remove(); $("#pastaRes").remove(); c.querySelector(".etapa").insertAdjacentHTML("beforeend", `<p class="nota">${tr("Nenhum resultado ainda. Rode uma análise ou abra um resultado existente.","No results yet. Run an analysis or open an existing result.")}</p>`); return; }
+  sel.innerHTML = lista.map((r, k) => `<option value="${k}">${r.nome} · ${r.data}</option>`).join("");
+  const k0 = lista.findIndex(r => S.resultado && r.caminho.toLowerCase() === S.resultado.toLowerCase()); if (k0 >= 0) sel.value = k0;
+  const url = (r, f) => `/res?d=${encodeURIComponent(r.caminho)}&f=${encodeURIComponent(f)}`;
+  const abrir = () => { const r = lista[+sel.value], u = url(r, "visualizador.html") + "&lang=" + LANG;
+    $("#vis").src = u; $("#novaAba").href = u; $("#pastaRes").onclick = () => api("/api/abrir_pasta", {pasta:r.caminho});
+    $("#resInfo").textContent = `${tr(r.metodo, r.metodo_en || r.metodo)} · ${r.quadros} ${tr("quadros","frames")}`;
+    $("#galeria").innerHTML = r.figuras.length ? tr("Figuras: ","Figures: ") + r.figuras.map(f => `<a target="_blank" href="${url(r, f)}">${f}</a>`).join(" · ") : ""; };
+  sel.onchange = abrir; abrir();
+}
+
+// ------------------------------------------------------------------ cabeçalho
+function textosFixos(){
+  document.documentElement.lang = LANG === "en" ? "en" : "pt-BR";
+  $("#slogan").textContent = tr("Correlação digital de imagens para ensaios mecânicos","Digital image correlation for mechanical testing");
+  $("#sobre").textContent = tr("Sobre","About"); $("#encerrar").textContent = tr("Encerrar","Quit");
+  $("#ajuda").textContent = tr("Documentação","Documentation"); $("#ajuda").title = tr("Manual, teoria e tutoriais (em inglês)","User guide, theory and tutorials");
+}
+function sobre(){
+  $("#sobreCorpo").innerHTML = `<div class="marca" style="color:inherit"><img src="/logo.svg" style="width:56px"><div><h2 style="margin:0">Moby-DIC ${S.app.versao}</h2>
+    <div class="nota">${tr("Correlação digital de imagens 2D","2D digital image correlation")}</div></div></div>
+    <p>${tr("Método principal: DIC local por subsets (IC-GN, ZNSSD, função de forma afim, interpolação B-spline cúbica), referência atualizada automaticamente, recuperação de pontos e tratamento de refoco. Deformações logarítmicas a partir de ajuste local de plano aos deslocamentos.","Main method: local subset DIC (IC-GN, ZNSSD, affine shape function, cubic B-spline interpolation), automatic reference updating, point recovery and refocus handling. Logarithmic strains from a local plane fit to displacements.")}</p>
+    <p class="nota">${tr("Sistema de coordenadas dos resultados: origem no canto inferior esquerdo da imagem, x para a direita, y para cima.","Result coordinate system: origin at the lower-left image corner, x to the right, y up.")}<br>
+    ${tr("Configuração do usuário","User settings")}: <code>%APPDATA%\\Moby-DIC</code> · muDIC: ${S.app.mudic ? tr("disponível","available") : tr("não instalado","not installed")}</p>
+    <p class="nota">© 2026 João Felipe · ${tr("Software livre sob a licença MIT","Free software under the MIT License")} · <a href="/docs/" target="_blank">${tr("Documentação","Documentation")}</a></p>`;
+  $("#dlgSobre").showModal(); $("#sobreOk").onclick = () => $("#dlgSobre").close();
+}
+
+async function escolherIdioma(){
+  const temVideo = (await api("/api/info/video").catch(() => ({}))).video;
+  return new Promise(res => {
+    const d = $("#dlgIdioma");
+    d.addEventListener("cancel", e => e.preventDefault());
+    d.querySelectorAll("[data-l]").forEach(b => b.onclick = async () => {
+      LANG = b.dataset.l; await api("/api/prefs", {idioma:LANG}).catch(() => {}); S.prefs.idioma = LANG;
+      $("#idioma").value = LANG; textosFixos();
+      $("#idiomaSub").textContent = tr("Correlação digital de imagens para ensaios mecânicos","Digital image correlation for mechanical testing");
+      $("#idiomaCorpo").innerHTML = `<div class="inicio">
+        <button data-a="imagens"><b>${tr("Analisar minhas imagens","Analyse my images")}</b><span>${tr("Escolher a pasta da sequência do ensaio","Choose the folder with the test sequence")}</span></button>
+        <button data-a="exemplo"><b>${tr("Experimentar um exemplo","Try an example")}</b><span>${tr("Sequência sintética de tração com estricção","Synthetic tension sequence with necking")}</span></button>
+        <button data-a="docs"><b>${tr("Ler a documentação","Read the documentation")}</b><span>${tr("Guia, teoria e tutoriais (em inglês)","User guide, theory and tutorials")}</span></button>
+        ${temVideo ? `<button data-a="video"><b>${tr("Ver o vídeo tutorial","Watch the video tutorial")}</b><span>${tr("Primeira análise, passo a passo (4 min, em inglês)","Your first analysis, step by step (4 min)")}</span></button>` : ""}</div>`;
+      $("#idiomaCorpo").querySelectorAll("[data-a]").forEach(x => x.onclick = () => { d.close(); res(x.dataset.a); });
+    });
+    d.showModal();
+  });
+}
+(async function(){
+  S.app = await api("/api/info"); S.prefs = S.app.prefs;
+  let acao = null;
+  LANG = (navigator.language || "en").toLowerCase().startsWith("pt") ? "pt" : "en"; $("#idioma").value = LANG; textosFixos();
+  if (S.prefs.idioma === "pt" || S.prefs.idioma === "en") LANG = S.prefs.idioma;
+  else acao = await escolherIdioma();
+  S.pos.idioma = LANG;
+  $("#idioma").value = LANG; textosFixos();
+  $("#idioma").onchange = e => { LANG = e.target.value; S.pos.idioma = LANG; api("/api/prefs", {idioma:LANG}); textosFixos(); ir(S.etapa); };
+  $("#sobre").onclick = sobre;
+  $("#ajuda").onclick = () => window.open("/docs/", "_blank");
+  $("#encerrar").onclick = async () => { if (!confirm(tr("Encerrar o Moby-DIC?","Quit Moby-DIC?"))) return; await api("/api/encerrar", {}).catch(() => {});
+    document.body.innerHTML = `<p style="padding:40px;font:16px system-ui">${tr("Moby-DIC encerrado. Pode fechar esta aba.","Moby-DIC has closed. You can close this tab.")}</p>`; };
+  if (S.prefs.escala_um_px) { S.escala.modo = "auto"; S.escala.valor = S.prefs.escala_um_px; } else S.escala.modo = "manual";
+  ir(0); acompanhar(true);
+  if (acao === "exemplo") abrirExemplo("necking", null);
+  if (acao === "docs") window.open("/docs/", "_blank");
+  if (acao === "video") window.open("/tutorial.mp4", "_blank");
+})();
+</script>
+</body>
+</html>

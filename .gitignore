@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+resultados*/
+dist/
+build_tmp/
+interface_config.json
+*.pyc
+docs/html/
+docs/video/_build/
+docs/tools/_build/
+docs/video/*.mp4
+pesquisa/
