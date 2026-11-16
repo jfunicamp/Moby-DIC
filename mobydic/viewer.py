@@ -165,6 +165,16 @@ def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", 
             t_por_nome = {r["arquivo"]: float(r["tempo_s"]) for r in _csv.DictReader(f)}
         if all(a in t_por_nome for a in arquivos):
             tempos = [t_por_nome[a] for a in arquivos]
+    ensaio = None                     # correlação com a curva do ensaio de tração (ensaio.json)
+    if (pasta / "ensaio.json").exists():
+        e = json.loads((pasta / "ensaio.json").read_text(encoding="utf-8"))
+        q = e["quadros"]
+        if q["arquivo"][:len(arquivos)] == arquivos:
+            corta = lambda v: v[:len(arquivos)] if v is not None else None  # noqa: E731
+            ensaio = {"t": corta(q["t_s"]), "F": corta(q["carga"]), "S": corta(q["tensao"]),
+                      "uF": e["unidades"]["carga"], "uS": e["unidades"]["tensao"], "red": e["reduzida"],
+                      "t_frac": e.get("t_fratura_s"), "t0": e.get("t_primeiro_s"), "metodo": e.get("metodo"),
+                      "fps": e.get("fps"), "curva": Path(e["curva"]["arquivo"]).name}
     topo, base = int(altura_img - 1 - y1), int(altura_img - 1 - y0)
     esq, dir_ = int(x0), int(x1)
     fator = largura_fundo / (dir_ - esq + 1)
@@ -193,8 +203,9 @@ def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", 
         "trilhas": {"nx": trilha.shape[2], "ny": trilha.shape[1], "x0": float(X0), "y0": float(Y0),
                     "dx": float(dX * sub), "dy": float(dY * sub)},
         "tempos": tempos,
+        "ensaio": ensaio,
     }
-    html = MODELO.replace("__DADOS__", json.dumps(dados, ensure_ascii=False)) \
+    html = MODELO.replace("__DADOS__", json.dumps(dados, ensure_ascii=False).replace("</", "<\\/")) \
                  .replace("__BLOB__", blob).replace("__FUNDOS__", json.dumps(fundos)) \
                  .replace("__TRILHAS__", blob_trilhas) \
                  .replace("__TITULO__", f"{NOME} · {amostra}")
@@ -215,11 +226,17 @@ MODELO = r"""<!doctype html>
 :root[data-theme="dark"]{--bg:#14171c;--card:#1c2027;--ink:#e6e9ef;--muted:#9aa3b2;--line:#2f3540;--accent:#5b95f0;--accent-ink:#0b0d10;--warn:#f0a040;}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-header{padding:14px 16px 6px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:flex-end;justify-content:space-between}
+header{padding:12px 16px 8px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
 h1{font-size:18px;margin:0 0 2px}
 .sub{color:var(--muted);font-size:12.5px}
-.barra{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;
-  padding:9px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+.palco{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:14px;padding:4px 16px 0;align-items:start}
+.palco.multi{grid-template-columns:1fr}
+@media (max-width:980px){.palco{grid-template-columns:1fr}}
+.cartao{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.cab{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:4px}
+.cab .titulo{font-weight:600}
+.barra{position:sticky;bottom:0;z-index:5;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:12px;
+  padding:8px 16px;background:var(--card);border-top:1px solid var(--line);box-shadow:0 -2px 8px rgba(0,0,0,.05)}
 .grupo{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;
   padding:6px 11px;cursor:pointer;min-width:38px}
@@ -232,18 +249,22 @@ select{font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6
 label{color:var(--muted)}
 #quadro{flex:1 1 240px;min-width:160px}
 .info{color:var(--muted);font-variant-numeric:tabular-nums}
-.grade{display:grid;gap:14px;padding:14px 16px}
+.grade{display:grid;gap:12px}
 .grade.l1{grid-template-columns:1fr}
-.grade.l2,.grade.l4{grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr))}
-.painel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
-.painel select.campo{font-weight:600;width:100%}
+.grade.l2,.grade.l4{grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr))}
+.grade.l1 .painel{border:0;padding:0}
+.painel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;min-width:0}
+.painel .pcab{display:flex;gap:6px;align-items:center}
+.painel select.campo{font-weight:600;flex:1;min-width:0}
+.painel .ctrl{display:none}.painel.escala .ctrl{display:grid}
+button.peq{padding:3px 9px;min-width:0;font-size:13px}
 canvas.mapa{width:100%;display:block;cursor:crosshair;margin-top:6px;touch-action:none}
 .ctrl{display:grid;grid-template-columns:auto 1fr auto;gap:6px 8px;align-items:center;margin-top:6px;font-size:13px}
 .ctrl .lin{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 .dica{position:fixed;pointer-events:none;background:rgba(15,18,24,.9);color:#fff;font-size:12.5px;padding:3px 8px;border-radius:6px;z-index:50;white-space:nowrap;display:none;font-variant-numeric:tabular-nums}
-.leitura{padding:0 16px 10px;color:var(--muted);font-variant-numeric:tabular-nums;min-height:2.6em}
+.leitura{color:var(--muted);font-variant-numeric:tabular-nums;min-height:1.4em;font-size:12.5px;margin-top:4px}
 #carregando{padding:40px 16px;color:var(--muted)}
-details.exportar{margin:0 16px 16px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+details.exportar{margin:12px 16px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
 details.exportar summary{cursor:pointer;font-weight:600}
 .exp{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px;margin-top:10px}
 .exp section{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
@@ -251,9 +272,15 @@ details.exportar summary{cursor:pointer;font-weight:600}
 .exp .lin{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:8px}
 .nota{color:var(--muted);font-size:12.5px}
 progress{width:100%;height:10px}
-.ext{margin-top:10px}.ext .lin{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:6px}
-.extStatus{font-size:13.5px;font-variant-numeric:tabular-nums;min-height:1.4em;margin:4px 0}
-.extGraf{width:100%;height:240px;display:block;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.acoes{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.nums{display:flex;flex-wrap:wrap;gap:6px 18px;margin:2px 0 6px;font-variant-numeric:tabular-nums}
+.nums div{display:flex;flex-direction:column}.nums b{font-size:19px;font-weight:650}.nums span{font-size:11.5px;color:var(--muted)}
+.extStatus{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;min-height:1.3em;margin:2px 0 6px}
+.extGraf{width:100%;height:300px;display:block}
+.opc{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px;margin-top:10px}
+.opc section{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.opc h3{margin:0 0 8px;font-size:14px}
+.opc .lin{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:8px}
 #status{font-size:13px;color:var(--muted);margin-top:6px;min-height:1.3em}
 </style>
 </head>
@@ -262,12 +289,23 @@ progress{width:100%;height:10px}
   <div><h1 id="titulo"></h1><div class="sub" id="sub"></div></div>
   <div class="grupo">
     <label><span data-t="idioma"></span> <select id="idioma"><option value="pt">Português</option><option value="en">English</option></select></label>
-    <label><span data-t="layout"></span> <select id="layout"><option value="1">1</option><option value="2">2</option><option value="4" selected>4</option></select></label>
-    <span class="grupo"><span class="info" data-t="zoom"></span>
-      <button id="zoomMais" data-tt="zoomMaisTip">+</button><button id="zoomMenos" data-tt="zoomMenosTip">−</button>
-      <button id="zoomReset" data-t="ajustar" data-tt="ajustarTip"></button><span class="info" id="zoomNivel"></span></span>
   </div>
 </header>
+<div id="carregando"></div>
+<main class="palco" id="palco">
+  <section class="cartao" id="cartaoMapa">
+    <div class="grade l1" id="grade"></div>
+    <div class="leitura" id="leitura"></div>
+  </section>
+  <section class="cartao" id="cartaoGraf">
+    <div class="cab"><span class="titulo" data-t="ext"></span><select id="extGrafico"></select></div>
+    <div class="nums" id="extNums"></div>
+    <canvas id="extGraf" class="extGraf"></canvas>
+    <div id="extStatus" class="extStatus"></div>
+    <div class="acoes"><button class="peq" id="extAuto" data-t="extAuto"></button><button class="peq" id="extMarcar" data-t="extMarcar"></button>
+      <button class="peq" id="extLimpar" data-t="extLimpar"></button><button class="peq" id="extCSV" data-t="extCSV"></button></div>
+  </section>
+</main>
 <div class="barra">
   <div class="grupo">
     <button id="ant" data-tt="anterior">◀</button>
@@ -276,27 +314,35 @@ progress{width:100%;height:10px}
   </div>
   <input type="range" id="quadro" min="0" value="0" aria-label="frame">
   <input type="number" id="quadroNum" min="0" step="1" aria-label="frame">
-  <label><span data-t="velocidade"></span> <select id="fps"><option>2</option><option>5</option><option selected>10</option><option>20</option><option>30</option></select> <span data-t="qps"></span></label>
-  <label><input type="checkbox" id="loop" checked> <span data-t="repetir"></span></label>
-  <label><span data-t="opacidade"></span> <input type="range" id="alfa" min="0" max="100" value="85" style="width:84px"></label>
-  <label><input type="checkbox" id="fundo" checked> <span data-t="imagem"></span></label>
-  <label><span data-t="cores"></span> <select id="cmap"></select></label>
-  <label><input type="checkbox" id="inverter"> <span data-t="inverter"></span></label>
   <span class="info" id="nomeQuadro"></span>
+  <span class="grupo" style="margin-left:auto"><span class="info" data-t="zoom"></span>
+    <button class="peq" id="zoomMais" data-tt="zoomMaisTip">+</button><button class="peq" id="zoomMenos" data-tt="zoomMenosTip">−</button>
+    <button class="peq" id="zoomReset" data-t="ajustar" data-tt="ajustarTip"></button><span class="info" id="zoomNivel"></span></span>
 </div>
-<div id="carregando"></div>
-<div class="grade l4" id="grade"></div>
-<div class="leitura" id="leitura"></div>
 <div class="dica" id="dica"></div>
-<details class="exportar" id="painelExt" open>
-  <summary data-t="ext"></summary>
-  <div class="ext">
-    <div class="lin"><button id="extAuto" data-t="extAuto"></button><button id="extMarcar" data-t="extMarcar"></button>
-      <button id="extLimpar" data-t="extLimpar"></button><button id="extCSV" data-t="extCSV"></button>
-      <label><span data-t="extComp"></span> <select id="extComp"><option value="d">L</option><option value="x">x</option><option value="y">y</option></select></label></div>
-    <p class="nota" data-t="extNota"></p>
-    <div id="extStatus" class="extStatus"></div>
-    <canvas id="extGraf" class="extGraf"></canvas>
+<details class="exportar" id="painelOpcoes">
+  <summary data-t="opcoes"></summary>
+  <div class="opc">
+    <section>
+      <h3 data-t="exibicao"></h3>
+      <div class="lin"><label><span data-t="layout"></span> <select id="layout"><option value="1" selected data-t="layout1"></option><option value="2">2</option><option value="4">4</option></select></label></div>
+      <div class="lin"><label><span data-t="cores"></span> <select id="cmap"></select></label>
+        <label><input type="checkbox" id="inverter"> <span data-t="inverter"></span></label></div>
+      <div class="lin"><label><span data-t="opacidade"></span> <input type="range" id="alfa" min="0" max="100" value="85" style="width:110px"></label>
+        <label><input type="checkbox" id="fundo" checked> <span data-t="imagem"></span></label></div>
+      <div class="lin"><label><span data-t="velocidade"></span> <select id="fps"><option>2</option><option>5</option><option selected>10</option><option>20</option><option>30</option></select> <span data-t="qps"></span></label>
+        <label><input type="checkbox" id="loop" checked> <span data-t="repetir"></span></label></div>
+      <p class="nota" data-t="notaEscala"></p>
+    </section>
+    <section>
+      <h3 data-t="extBase"></h3>
+      <div class="lin"><label>L₀ <input type="number" id="extL0" step="any" min="0"></label> <span class="info uEixo"></span>
+        <label><span data-t="extFaixa"></span> <input type="number" id="extFaixa" step="any" min="0" value="0"></label> <span class="info uEixo"></span></div>
+      <div class="lin"><label><span data-t="extCentro"></span> x <input type="number" id="extXc" step="any"></label>
+        <label>y <input type="number" id="extYc" step="any"></label> <span class="info uEixo"></span></div>
+      <div class="lin"><label><span data-t="extComp"></span> <select id="extComp"><option value="d">L</option><option value="x">x</option><option value="y">y</option></select></label></div>
+      <p class="nota" data-t="extNota"></p>
+    </section>
   </div>
 </details>
 <details class="exportar" id="painelExportar">
@@ -359,15 +405,23 @@ const TXT = {
     nQuadros:n=>`${n} quadros`, gerando:(i,n)=>`Gerando ${i}/${n}…`, pronto:"Pronto.", cancelado:"Cancelado.", semVideo:"Este navegador não grava vídeo a partir do canvas.",
     sub:(m,e,n,w,h,c)=>`${m} · ${e} · ${n} quadros · grade de exibição ${w}×${h} (${c} px) · origem no canto inferior esquerdo, y para cima`,
     eixoX:"x", eixoY:"y", deformada:"configuração deformada", semCal:"sem calibração (pixels)",
-    estados:{referencia:"referência", convergiu:"convergiu", quadro_ruim:"quadro ruim", nao_convergiu:"não convergiu"},
+    estados:{referencia:"referência", convergiu:"convergiu", quadro_ruim:"quadro ruim", ponte:"ponte (referência após quadros ruins)", nao_convergiu:"não convergiu"},
     grupos:{desl:"Deslocamentos", def:"Deformações", der:"Grandezas derivadas", taxa:"Incrementos entre quadros", qual:"Qualidade da medição"},
     zoom:"Zoom", zoomMaisTip:"Aproximar (ou roda do mouse sobre um mapa)", zoomMenosTip:"Afastar", ajustar:"ajustar",
     ajustarTip:"Mostrar a região inteira (ou duplo clique no mapa)", dicaZoom:"Roda do mouse: zoom · arrastar: mover · duplo clique: ajustar.",
     ext:"Extensômetro digital", extAuto:"Sugestão automática", extMarcar:"Marcar dois pontos", extLimpar:"Remover", extCSV:"Baixar CSV",
-    extComp:"Medir", extNota:"Deformação de engenharia entre dois pontos materiais marcados no quadro inicial, como um extensômetro de contato: ε = L/L₀ − 1 (L = distância entre os pontos; x ou y = só a componente nessa direção). Sugestão automática: linha na direção x, no centro da região medida, com metade da largura.",
+    extComp:"Medir",
     extA:"Clique no primeiro ponto (A) num mapa. O quadro inicial foi selecionado.", extB:"Agora clique no segundo ponto (B).", extFora:"Ponto fora da região medida no quadro inicial; escolha outro.",
     extVazio:"Nenhum extensômetro. Use a sugestão automática ou marque dois pontos.", extSem:"Este visualizador não tem as trajetórias dos pontos; gere-o de novo com o Moby-DIC 1.1 ou mais recente.",
-    extResumo:(L0, u, e, et, tt) => `L₀ = ${L0} ${u} · ${T("quadro")} ${tt}: ε = ${e} % (verdadeira ${et} %)`, eixoQ:"quadro", eixoT:"tempo (s)", extEixoY:"ε extensômetro (%)"},
+    extResumo:(L0, u, e, et, tt) => `L₀ = ${L0} ${u} · ${T("quadro")} ${tt}: ε = ${e} % (verdadeira ${et} %)`, eixoQ:"quadro", eixoT:"tempo (s)", extEixoY:"ε extensômetro (%)",
+    extNota:"Deformação de engenharia ε = L/L₀ − 1 entre dois pontos materiais do quadro inicial, seguidos pelo DIC (como um extensômetro de contato). Defina L₀ e o centro (unidades do eixo, origem no canto inferior esquerdo) para repetir a mesma base em outros ensaios; a faixa em y faz a média de linhas paralelas (reduz o ruído). Sugestão automática: linha horizontal no centro da região medida, com metade da largura medida. A deformação depois da estricção depende de L₀ e da posição; informe-os junto com o resultado.",
+    opcoes:"Opções", exibicao:"Exibição", layout1:"1 (amostra + curva)", extBase:"Extensômetro: base de medida", extFaixa:"faixa em y",
+    extCentro:"centro", notaEscala:"A escala de cores de cada mapa abre no botão «escala» ao lado do campo.", escalaBtn:"escala",
+    extL0zero:"A componente escolhida da base é zero (por exemplo, y numa base horizontal): escolha L ou x, ou marque outra base.",
+    nT:"tempo", nQ:"quadro", nS:"tensão", nF:"carga", nE:"ε extensômetro",
+    extGrafico:"Gráfico", gTempo:"ε × tempo", gQuadro:"ε × quadro", gTensao:"tensão × ε (ensaio)", gCarga:"carga × ε (ensaio)", gCurva:"curva do ensaio × tempo",
+    eixoTm:"tempo do ensaio (s)", eixoS:u => `tensão (${u})`, eixoF:u => `carga (${u})`,
+    ensaioQ:(tt, v, u) => `t = ${tt} s` + (v ? ` · ${v} ${u}` : ""), apos:"após a fratura", imagens:"imagens analisadas"},
   en: {idioma:"Language", layout:"Panels", anterior:"Previous frame (←)", proximo:"Next frame (→)", playTip:"Play/pause (space)",
     play:"▶ Play", pausa:"❚❚ Pause", velocidade:"Speed", qps:"frames/s", repetir:"loop", opacidade:"Opacity",
     imagem:"image", cores:"Colormap", inverter:"reverse", carregando:"Decompressing data…", falha:"Could not decompress the data: ",
@@ -381,15 +435,23 @@ const TXT = {
     nQuadros:n=>`${n} frames`, gerando:(i,n)=>`Rendering ${i}/${n}…`, pronto:"Done.", cancelado:"Cancelled.", semVideo:"This browser cannot record video from a canvas.",
     sub:(m,e,n,w,h,c)=>`${m} · ${e} · ${n} frames · display grid ${w}×${h} (${c} px) · origin at the lower-left corner, y up`,
     eixoX:"x", eixoY:"y", deformada:"deformed configuration", semCal:"uncalibrated (pixels)",
-    estados:{referencia:"reference", convergiu:"converged", quadro_ruim:"bad frame", nao_convergiu:"not converged"},
+    estados:{referencia:"reference", convergiu:"converged", quadro_ruim:"bad frame", ponte:"bridge (reference after bad frames)", nao_convergiu:"not converged"},
     grupos:{desl:"Displacements", def:"Strains", der:"Derived quantities", taxa:"Frame-to-frame increments", qual:"Measurement quality"},
     zoom:"Zoom", zoomMaisTip:"Zoom in (or mouse wheel over a map)", zoomMenosTip:"Zoom out", ajustar:"fit",
     ajustarTip:"Show the whole region (or double-click the map)", dicaZoom:"Mouse wheel: zoom · drag: pan · double-click: fit.",
     ext:"Digital extensometer", extAuto:"Automatic suggestion", extMarcar:"Pick two points", extLimpar:"Remove", extCSV:"Download CSV",
-    extComp:"Measure", extNota:"Engineering strain between two material points picked in the initial frame, like a clip-on extensometer: ε = L/L₀ − 1 (L = distance between the points; x or y = only that component). Automatic suggestion: a line along x, centred in the measured region, half its width long.",
+    extComp:"Measure",
     extA:"Click the first point (A) on a map. The initial frame has been selected.", extB:"Now click the second point (B).", extFora:"Point outside the region measured in the initial frame; pick another one.",
     extVazio:"No extensometer. Use the automatic suggestion or pick two points.", extSem:"This viewer has no point tracks; rebuild it with Moby-DIC 1.1 or later.",
-    extResumo:(L0, u, e, et, tt) => `L₀ = ${L0} ${u} · ${T("quadro")} ${tt}: ε = ${e} % (true ${et} %)`, eixoQ:"frame", eixoT:"time (s)", extEixoY:"extensometer ε (%)"},
+    extResumo:(L0, u, e, et, tt) => `L₀ = ${L0} ${u} · ${T("quadro")} ${tt}: ε = ${e} % (true ${et} %)`, eixoQ:"frame", eixoT:"time (s)", extEixoY:"extensometer ε (%)",
+    extNota:"Engineering strain ε = L/L₀ − 1 between two material points of the initial frame, tracked by DIC (like a clip-on extensometer). Set L₀ and the centre (axis units, origin at the lower-left corner) to reuse the same gauge on other tests; the band in y averages parallel lines (less noise). Automatic suggestion: a horizontal line at the centre of the measured region, half the measured width long. Strain after necking depends on L₀ and on the position; report them with the result.",
+    opcoes:"Options", exibicao:"Display", layout1:"1 (specimen + curve)", extBase:"Extensometer: gauge definition", extFaixa:"band in y",
+    extCentro:"centre", notaEscala:"The colour scale of each map opens with the «scale» button next to the field.", escalaBtn:"scale",
+    extL0zero:"The chosen component of the gauge is zero (e.g. y on a horizontal gauge): choose L or x, or pick another gauge.",
+    nT:"time", nQ:"frame", nS:"stress", nF:"load", nE:"extensometer ε",
+    extGrafico:"Chart", gTempo:"ε vs time", gQuadro:"ε vs frame", gTensao:"stress vs ε (test)", gCarga:"load vs ε (test)", gCurva:"test curve vs time",
+    eixoTm:"test time (s)", eixoS:u => `stress (${u})`, eixoF:u => `load (${u})`,
+    ensaioQ:(tt, v, u) => `t = ${tt} s` + (v ? ` · ${v} ${u}` : ""), apos:"after fracture", imagens:"analysed images"},
 };
 let L = "pt";
 try { L = localStorage.getItem("dic_idioma") || D.idioma_padrao || "pt"; } catch(e) { L = D.idioma_padrao || "pt"; }
@@ -503,7 +565,7 @@ function escalaDe(k){ if (!escala[k]){ const e = estatisticas(k); escala[k] = {m
 // ---------------------------------------------------------------- extensômetro digital
 const TR = D.trilhas, FE = D.calibrado ? D.escala_um_px/1000 : 1;   // px -> unidade dos eixos
 let TRD = null, TRM = null;
-const EXT = {A: null, B: null, marcando: 0, serie: null, L0: 0, comp: "d"};
+const EXT = {A: null, B: null, marcando: 0, serie: null, L0: 0, comp: "d", faixa: 0};
 async function descompactarTrilhas(){
   if (!TR || !TRILHAS || TRILHAS.startsWith("__")) return;
   const bin = Uint8Array.from(atob(TRILHAS), ch => ch.charCodeAt(0));
@@ -527,13 +589,43 @@ function deslocPonto(x, y, tt){
   }
   return [ux, uy];
 }
+// linhas paralelas da faixa (deslocadas na perpendicular de AB, passo = espaçamento da grade)
+function linhasExt(){
+  const [ax, ay] = EXT.A, [bx, by] = EXT.B, c = Math.hypot(bx - ax, by - ay) || 1;
+  const nx = -(by - ay)/c, ny = (bx - ax)/c, m = Math.floor((EXT.faixa || 0)/2/Math.min(TR.dx, TR.dy) + 1e-9), d = Math.min(TR.dx, TR.dy);
+  const out = []; for (let k = -m; k <= m; k++) out.push([[ax + k*d*nx, ay + k*d*ny], [bx + k*d*nx, by + k*d*ny]]); return out;
+}
 function calcularExt(){
   EXT.serie = null; if (!EXT.A || !EXT.B) return;
-  const [ax, ay] = EXT.A, [bx, by] = EXT.B, comp = EXT.comp;
+  const comp = EXT.comp;
   const L = (p, q) => comp === "x" ? Math.abs(q[0] - p[0]) : comp === "y" ? Math.abs(q[1] - p[1]) : Math.hypot(q[0] - p[0], q[1] - p[1]);
-  EXT.L0 = L([ax, ay], [bx, by]);
-  EXT.serie = Array.from({length: N}, (_, tt) => { const da = deslocPonto(ax, ay, tt), db = deslocPonto(bx, by, tt);
-    if (!da || !db || !(EXT.L0 > 0)) return NaN; return L([ax + da[0], ay + da[1]], [bx + db[0], by + db[1]])/EXT.L0 - 1; });
+  EXT.L0 = L(EXT.A, EXT.B);
+  if (!(EXT.L0 > 0)){ extParaCampos(); return; }          // ex.: componente y de uma base horizontal
+  const linhas = linhasExt();
+  EXT.serie = Array.from({length: N}, (_, tt) => { let s = 0, k = 0;
+    for (const [a, b] of linhas){ const da = deslocPonto(a[0], a[1], tt), db = deslocPonto(b[0], b[1], tt), l0 = L(a, b);
+      if (!da || !db || !(l0 > 0)) continue; s += L([a[0] + da[0], a[1] + da[1]], [b[0] + db[0], b[1] + db[1]])/l0 - 1; k++; }
+    return k >= Math.max(1, Math.ceil(linhas.length/2)) ? s/k : NaN; });
+  extParaCampos();
+}
+function extParaCampos(){
+  const f = v => (EXT.A ? +(v*FE).toFixed(D.calibrado ? 4 : 1) : "");
+  const L0 = EXT.A ? Math.hypot(EXT.B[0] - EXT.A[0], EXT.B[1] - EXT.A[1]) : 0;
+  document.getElementById("extL0").value = f(L0); document.getElementById("extFaixa").value = f(EXT.faixa || 0) || 0;
+  document.getElementById("extXc").value = EXT.A ? f((EXT.A[0] + EXT.B[0])/2) : ""; document.getElementById("extYc").value = EXT.A ? f((EXT.A[1] + EXT.B[1])/2) : "";
+}
+function extDeCampos(campo){
+  const g = id => parseFloat(String(document.getElementById(id).value).replace(",", "."));
+  const L0 = g("extL0")/FE, xc = g("extXc")/FE, yc = g("extYc")/FE, fx = g("extFaixa")/FE;
+  EXT.faixa = isFinite(fx) && fx > 0 ? fx : 0;
+  // só a faixa mudou (ou dados incompletos): mantém os pontos
+  if (campo === "extFaixa" || !(L0 > 0) || !isFinite(xc) || !isFinite(yc)){ calcularExt(); desenhar(); return; }
+  // mantém a direção da base atual (horizontal se ainda não houver base)
+  let ux = 1, uy = 0;
+  if (EXT.A && EXT.B){ const c = Math.hypot(EXT.B[0] - EXT.A[0], EXT.B[1] - EXT.A[1]); if (c > 0){ ux = (EXT.B[0] - EXT.A[0])/c; uy = (EXT.B[1] - EXT.A[1])/c; } }
+  const A = [xc - ux*L0/2, yc - uy*L0/2], B = [xc + ux*L0/2, yc + uy*L0/2];
+  if (!deslocPonto(A[0], A[1], 0) || !deslocPonto(B[0], B[1], 0)){ document.getElementById("extStatus").textContent = T("extFora"); return; }
+  EXT.A = A; EXT.B = B; EXT.marcando = 0; calcularExt(); desenhar();
 }
 function sugerirExt(){
   if (!TRD) return;
@@ -564,6 +656,10 @@ function desenharExtEm(ctx, g, tt, fs){
     return [g.X + ((p[0] + d[0])*FE - V.x0)/vw*g.pw, g.Y + g.ph - ((p[1] + d[1])*FE - V.y0)/vh*g.ph]; };
   const pts = [EXT.A, EXT.B].filter(Boolean).map(tela);
   ctx.save(); ctx.beginPath(); ctx.rect(g.X, g.Y, g.pw, g.ph); ctx.clip();
+  if (EXT.A && EXT.B && EXT.faixa > 0){ const ls = linhasExt(), a = ls[0], b = ls[ls.length - 1];
+    const q = [tela(a[0]), tela(a[1]), tela(b[1]), tela(b[0])];
+    if (q.every(p => isFinite(p[0]))){ ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.strokeStyle = "rgba(255,255,255,.8)"; ctx.lineWidth = fs;
+      ctx.beginPath(); ctx.moveTo(...q[0]); q.slice(1).forEach(p => ctx.lineTo(...p)); ctx.closePath(); ctx.fill(); ctx.stroke(); } }
   if (pts.length === 2 && pts.every(p => isFinite(p[0]))){
     ctx.strokeStyle = "rgba(0,0,0,.75)"; ctx.lineWidth = 4*fs; ctx.beginPath(); ctx.moveTo(...pts[0]); ctx.lineTo(...pts[1]); ctx.stroke();
     ctx.strokeStyle = "#fff"; ctx.lineWidth = 2*fs; ctx.setLineDash([6*fs, 4*fs]); ctx.beginPath(); ctx.moveTo(...pts[0]); ctx.lineTo(...pts[1]); ctx.stroke(); ctx.setLineDash([]);
@@ -579,41 +675,107 @@ function desenharExtEm(ctx, g, tt, fs){
   }
   ctx.restore();
 }
-function desenharGrafExt(){
-  const cv = document.getElementById("extGraf"), st = document.getElementById("extStatus"); if (!cv) return;
-  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth || 600, h = cv.clientHeight || 240;
-  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr); const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const est = estiloTela(); ctx.fillStyle = est.bg; ctx.fillRect(0, 0, w, h);
-  if (!TRD){ st.textContent = T("extSem"); return; }
-  if (EXT.marcando){ st.textContent = EXT.marcando === 1 ? T("extA") : T("extB"); }
-  if (!EXT.serie){ if (!EXT.marcando) st.textContent = T("extVazio"); return; }
-  const xs = D.tempos || EXT.serie.map((_, i) => i), ys = EXT.serie.map(v => 100*v);
-  const fin = ys.filter(v => isFinite(v)); if (!fin.length) return;
-  const u = D.u_eixo, L0 = decimal((EXT.L0*FE).toFixed(D.calibrado ? 3 : 1)), e = ys[t], et = 100*Math.log1p(EXT.serie[t]);
-  st.textContent = T("extResumo")(L0, u, isFinite(e) ? decimal(e.toFixed(3)) : "—", isFinite(et) ? decimal(et.toFixed(3)) : "—", t);
-  const ml = 54, mr = 14, mt = 12, mb = 36, pw = w - ml - mr, ph = h - mt - mb;
-  let y0 = Math.min(0, ...fin), y1 = Math.max(0, ...fin); if (y1 - y0 < 1e-6) y1 = y0 + 1;
-  const pad = 0.06*(y1 - y0); y0 -= pad; y1 += pad;
-  const x0 = xs[0], x1 = xs[xs.length - 1] || 1, X = v => ml + (v - x0)/((x1 - x0) || 1)*pw, Y = v => mt + ph - (v - y0)/(y1 - y0)*ph;
+const ENS = D.ensaio;
+const temposQ = () => ENS ? ENS.t : D.tempos;             // tempo de cada quadro (ensaio > vídeo > nada)
+const valEnsaio = () => ENS ? (ENS.S || ENS.F) : null;   // tensão se houver, senão carga
+const unEnsaio = () => ENS ? (ENS.S ? ENS.uS : ENS.uF) : "";
+const num_ = v => (v === null || v === undefined) ? NaN : v;
+function eixosGraf(ctx, w, h, xr, yr, xl, yl, est){
+  const ml = 58, mr = 14, mt = 12, mb = 36, pw = w - ml - mr, ph = h - mt - mb;
+  let [x0, x1] = xr, [y0, y1] = yr; if (x1 - x0 < 1e-9) x1 = x0 + 1; if (y1 - y0 < 1e-9) y1 = y0 + 1;
+  const py0 = 0.06*(y1 - y0); y0 -= py0; y1 += py0;
+  const X = v => ml + (v - x0)/(x1 - x0)*pw, Y = v => mt + ph - (v - y0)/(y1 - y0)*ph;
   ctx.strokeStyle = est.line; ctx.lineWidth = 1; ctx.strokeRect(ml + .5, mt + .5, pw, ph);
   ctx.fillStyle = est.muted; ctx.font = "11px system-ui,sans-serif";
   const py = passoEixo(y1 - y0), dy = casas(py); ctx.textAlign = "right"; ctx.textBaseline = "middle";
   for (let v = Math.ceil(y0/py)*py; v <= y1; v += py){ ctx.fillRect(ml - 4, Y(v), 4, 1); ctx.fillText(decimal(v.toFixed(dy)), ml - 6, Y(v)); }
   const px = passoEixo(x1 - x0), dx = casas(px); ctx.textAlign = "center"; ctx.textBaseline = "top";
   for (let v = Math.ceil(x0/px)*px; v <= x1 + 1e-9; v += px){ ctx.fillRect(X(v), mt + ph, 1, 4); ctx.fillText(decimal(v.toFixed(dx)), X(v), mt + ph + 6); }
-  ctx.fillText(D.tempos ? T("eixoT") : T("eixoQ"), ml + pw/2, mt + ph + 20);
-  ctx.save(); ctx.translate(12, mt + ph/2); ctx.rotate(-Math.PI/2); ctx.textBaseline = "middle"; ctx.fillText(T("extEixoY"), 0, 0); ctx.restore();
-  ctx.strokeStyle = est.muted; ctx.globalAlpha = .4; ctx.beginPath(); ctx.moveTo(ml, Y(0)); ctx.lineTo(ml + pw, Y(0)); ctx.stroke(); ctx.globalAlpha = 1;
-  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--accent").trim() || "#2a6fdb"; ctx.lineWidth = 2; ctx.beginPath();
-  let novo = true; ys.forEach((v, i) => { if (!isFinite(v)){ novo = true; return; } if (novo){ ctx.moveTo(X(xs[i]), Y(v)); novo = false; } else ctx.lineTo(X(xs[i]), Y(v)); }); ctx.stroke();
-  if (isFinite(ys[t])){ ctx.fillStyle = "#d33"; ctx.beginPath(); ctx.arc(X(xs[t]), Y(ys[t]), 4, 0, 7); ctx.fill(); }
+  ctx.fillText(xl, ml + pw/2, mt + ph + 20);
+  ctx.save(); ctx.translate(12, mt + ph/2); ctx.rotate(-Math.PI/2); ctx.textBaseline = "middle"; ctx.fillText(yl, 0, 0); ctx.restore();
+  return {X, Y, ml, mt, pw, ph};
+}
+function linhaGraf(ctx, g, xs, ys, cor, larg){
+  ctx.strokeStyle = cor; ctx.lineWidth = larg; ctx.beginPath(); let novo = true;
+  xs.forEach((x, i) => { const y = ys[i]; if (!isFinite(x) || !isFinite(y)){ novo = true; return; }
+    if (novo){ ctx.moveTo(g.X(x), g.Y(y)); novo = false; } else ctx.lineTo(g.X(x), g.Y(y)); }); ctx.stroke();
+}
+function marcaGraf(ctx, g, x, y){ if (!isFinite(x) || !isFinite(y)) return; ctx.fillStyle = "#d33"; ctx.beginPath(); ctx.arc(g.X(x), g.Y(y), 4.5, 0, 7); ctx.fill(); }
+function opcoesGrafico(){
+  const sel = document.getElementById("extGrafico"), atual = sel.value;
+  const ops = [["tempo", temposQ() ? T("gTempo") : T("gQuadro")]];
+  if (ENS){ ops.push(["tensao", ENS.S ? T("gTensao") : T("gCarga")]); ops.push(["curva", T("gCurva")]); }
+  sel.innerHTML = ops.map(([v, n]) => `<option value="${v}">${n}</option>`).join("");
+  sel.value = ops.some(o => o[0] === atual) ? atual : (ENS ? "tensao" : "tempo");
+}
+function desenharGrafExt(){
+  const cv = document.getElementById("extGraf"); if (!cv) return;
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth || 600, h = cv.clientHeight || 240;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr); const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const est = estiloTela(); ctx.fillStyle = est.bg; ctx.fillRect(0, 0, w, h);
+  resumoExt();
+  grafExtEm(ctx, w, h, est, t);
+}
+const corGraf = () => getComputedStyle(document.body).getPropertyValue("--accent").trim() || "#2a6fdb";
+// números do quadro atual (tempo, tensão, ε) e linha de estado
+function resumoExt(){
+  const st = document.getElementById("extStatus"), ve = valEnsaio(), un = unEnsaio();
+  let txt = "";
+  if (!TRD) txt = T("extSem");
+  else if (EXT.marcando) txt = EXT.marcando === 1 ? T("extA") : T("extB");
+  else if (EXT.A && EXT.B && !(EXT.L0 > 0)) txt = T("extL0zero");
+  else if (!EXT.serie) txt = T("extVazio");
+  else { const e = 100*EXT.serie[t], et = 100*Math.log1p(EXT.serie[t]);
+    txt = T("extResumo")(decimal((EXT.L0*FE).toFixed(D.calibrado ? 3 : 1)), D.u_eixo, isFinite(e) ? decimal(e.toFixed(3)) : "—", isFinite(et) ? decimal(et.toFixed(3)) : "—", t)
+      + ((EXT.faixa || 0) > 0 ? ` · ${T("extFaixa")} ${decimal(((EXT.faixa)*FE).toFixed(3))} ${D.u_eixo}` : ""); }
+  if (ENS && ENS.t_frac !== null && ENS.t[t] > ENS.t_frac) txt += (txt ? " · " : "") + T("apos");
+  st.textContent = txt;
+  const chips = [];
+  if (ENS) chips.push([decimal(ENS.t[t].toFixed(2)) + " s", T("nT")]); else chips.push([String(t), T("nQ")]);
+  if (ENS){ const v = num_(ve[t]); chips.push([isFinite(v) ? decimal(v.toFixed(1)) + " " + un : "—", ENS.S ? T("nS") : T("nF")]); }
+  if (EXT.serie){ const e = 100*EXT.serie[t]; chips.push([isFinite(e) ? decimal(e.toFixed(2)) + " %" : "—", T("nE")]); }
+  const escH = v => String(v).replace(/[&<>"']/g, c => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[c]));
+  document.getElementById("extNums").innerHTML = chips.map(([v, l]) => `<div><b>${escH(v)}</b><span>${escH(l)}</span></div>`).join("");
+}
+// gráfico do extensômetro / ensaio para o quadro tt num contexto qualquer (tela ou figura exportada)
+function grafExtEm(ctx, w, h, est, tt){
+  const t = tt, cor = corGraf();
+  const modo = document.getElementById("extGrafico").value || "tempo";
+  const tq = temposQ(), ve = valEnsaio(), un = unEnsaio(), yEns = ENS ? (ENS.S ? T("eixoS")(un) : T("eixoF")(un)) : "";
+  if (modo === "curva" && ENS){
+    const r = ENS.red, ys = r.S || r.F, tq2 = ENS.t;
+    const fin = ys.filter(isFinite), g = eixosGraf(ctx, w, h, [r.t[0], r.t[r.t.length - 1]], [Math.min(0, ...fin), Math.max(...fin)], T("eixoTm"), yEns, est);
+    const a = Math.max(g.ml, g.X(Math.min(...tq2))), b = Math.min(g.ml + g.pw, g.X(Math.max(...tq2)));
+    ctx.fillStyle = "rgba(60,160,90,.13)"; ctx.fillRect(a, g.mt, Math.max(1, b - a), g.ph);
+    ctx.fillStyle = est.muted; ctx.font = "10.5px system-ui,sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillText(T("imagens"), a + 4, g.mt + 3);
+    if (ENS.t_frac !== null){ ctx.strokeStyle = "#c0392b"; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(g.X(ENS.t_frac), g.mt); ctx.lineTo(g.X(ENS.t_frac), g.mt + g.ph); ctx.stroke(); ctx.setLineDash([]); }
+    linhaGraf(ctx, g, r.t, ys, est.muted, 1.2);
+    ctx.fillStyle = cor; tq2.forEach((x, i) => { const y = num_(ve[i]); if (isFinite(y)) ctx.fillRect(g.X(x) - 1.5, g.Y(y) - 1.5, 3, 3); });
+    marcaGraf(ctx, g, tq2[t], num_(ve[t]));
+    return;
+  }
+  if (!EXT.serie) return;
+  const ex = EXT.serie.map(v => 100*v), fin = ex.filter(isFinite); if (!fin.length) return;
+  if (modo === "tensao" && ENS){
+    const ys = ve.map(num_), fy = ys.filter(isFinite);
+    const g = eixosGraf(ctx, w, h, [Math.min(0, ...fin), Math.max(...fin)], [Math.min(0, ...fy), Math.max(...fy)], T("extEixoY"), yEns, est);
+    linhaGraf(ctx, g, ex, ys, cor, 2); marcaGraf(ctx, g, ex[t], ys[t]);
+    return;
+  }
+  const xs = tq || ex.map((_, i) => i);
+  const g = eixosGraf(ctx, w, h, [xs[0], xs[xs.length - 1]], [Math.min(0, ...fin), Math.max(0, ...fin)], ENS ? T("eixoTm") : (tq ? T("eixoT") : T("eixoQ")), T("extEixoY"), est);
+  ctx.strokeStyle = est.muted; ctx.globalAlpha = .4; ctx.beginPath(); ctx.moveTo(g.ml, g.Y(0)); ctx.lineTo(g.ml + g.pw, g.Y(0)); ctx.stroke(); ctx.globalAlpha = 1;
+  linhaGraf(ctx, g, xs, ex, cor, 2); marcaGraf(ctx, g, xs[t], ex[t]);
 }
 function csvExt(){
   if (!EXT.serie) return;
-  const sep = ",", linhas = [["frame", "file", "time_s", `L_${D.u_eixo}`, "eng_strain_pct", "true_strain_pct"].join(sep)];
-  EXT.serie.forEach((e, i) => linhas.push([i, D.arquivos[i], D.tempos ? D.tempos[i] : "", isFinite(e) ? ((1 + e)*EXT.L0*FE).toFixed(6) : "",
-    isFinite(e) ? (100*e).toFixed(5) : "", isFinite(e) ? (100*Math.log1p(e)).toFixed(5) : ""].join(sep)));
-  const cab = `# Moby-DIC digital extensometer · ${D.amostra} · A = (${(EXT.A[0]*FE).toFixed(4)}, ${(EXT.A[1]*FE).toFixed(4)}) ${D.u_eixo}, B = (${(EXT.B[0]*FE).toFixed(4)}, ${(EXT.B[1]*FE).toFixed(4)}) ${D.u_eixo} in the initial frame (origin lower-left) · measure: ${EXT.comp}`;
+  const sep = ",", tq = temposQ();
+  const linhas = [["frame", "file", ENS ? "test_time_s" : "time_s", `L_${D.u_eixo}`, "eng_strain_pct", "true_strain_pct",
+    ...(ENS ? [`load_${ENS.uF}`, ...(ENS.S ? [`stress_${ENS.uS}`] : [])] : [])].join(sep)];
+  EXT.serie.forEach((e, i) => linhas.push([i, D.arquivos[i], tq ? tq[i] : "", isFinite(e) ? ((1 + e)*EXT.L0*FE).toFixed(6) : "",
+    isFinite(e) ? (100*e).toFixed(5) : "", isFinite(e) ? (100*Math.log1p(e)).toFixed(5) : "",
+    ...(ENS ? [isFinite(num_(ENS.F[i])) ? ENS.F[i] : "", ...(ENS.S ? [isFinite(num_(ENS.S[i])) ? ENS.S[i] : ""] : [])] : [])].join(sep)));
+  const cab = `# Moby-DIC digital extensometer · ${D.amostra} · A = (${(EXT.A[0]*FE).toFixed(4)}, ${(EXT.A[1]*FE).toFixed(4)}) ${D.u_eixo}, B = (${(EXT.B[0]*FE).toFixed(4)}, ${(EXT.B[1]*FE).toFixed(4)}) ${D.u_eixo} in the initial frame (origin lower-left) · L0 = ${(EXT.L0*FE).toFixed(4)} ${D.u_eixo} · band = ${((EXT.faixa || 0)*FE).toFixed(4)} ${D.u_eixo} · measure: ${EXT.comp}`;
   baixar(new Blob([cab + "\n" + linhas.join("\n") + "\n"], {type: "text/csv"}), `${nomeBase()}_extensometer.csv`);
 }
 
@@ -714,7 +876,7 @@ function opcoesCampos(){
 function criarPainel(k0){
   const el = document.createElement("section");
   el.className = "painel";
-  el.innerHTML = `<select class="campo"></select>
+  el.innerHTML = `<div class="pcab"><select class="campo"></select><button class="peq escalaBtn"></button></div>
     <canvas class="mapa"></canvas>
     <div class="ctrl">
       <label class="tLim"></label><input type="range" class="lim" min="0" max="1000" step="1">
@@ -729,6 +891,7 @@ function criarPainel(k0){
     </div>`;
   const p = {el, k: k0}; ["campo","mapa","lim","limNum","sim","mn","mx","auto","quadroAuto"].forEach(n => p[n] = el.querySelector("." + n));
   const aplicar = () => { atualizarControles(p); desenharPainel(p); };
+  el.querySelector(".escalaBtn").onclick = () => { el.classList.toggle("escala"); desenhar(); };
   const meia = v => { const s = escalaDe(p.k);
     if (s.sim){ s.min = -v; s.max = v; } else { const c0 = (s.min + s.max)/2; s.min = c0 - v; s.max = c0 + v; } };
   p.campo.addEventListener("change", () => { p.k = +p.campo.value; aplicar(); guardar(); });
@@ -766,6 +929,7 @@ function mmDoEvento(ev, p){ const r = p.mapa.getBoundingClientRect(), g = p.geo;
   return {x: V.x0 + u*(V.x1 - V.x0), y: V.y0 + v*(V.y1 - V.y0)}; }
 function traduzirPainel(p){
   p.campo.innerHTML = opcoesCampos(); p.campo.value = p.k;
+  p.el.querySelector(".escalaBtn").textContent = T("escalaBtn") + " ▾";
   p.el.querySelector(".tLim").textContent = T("limite"); p.el.querySelector(".tSim").textContent = T("simetrico");
   p.el.querySelector(".tMin").textContent = T("min"); p.el.querySelector(".tMax").textContent = T("max");
   p.auto.textContent = T("auto"); p.auto.title = T("autoTip"); p.quadroAuto.textContent = T("quadroBtn"); p.quadroAuto.title = T("quadroTip");
@@ -780,6 +944,7 @@ function atualizarControles(p){
 function montarLayout(){
   const n = +document.getElementById("layout").value, grade = document.getElementById("grade");
   grade.className = "grade l" + n;
+  document.getElementById("palco").classList.toggle("multi", n > 1);
   while (paineis.length < n) { const p = criarPainel(padrao[paineis.length] ?? 0); paineis.push(p); }
   paineis.forEach((p, i) => { if (i < n){ if (!p.el.parentNode) grade.appendChild(p.el); } else if (p.el.parentNode) p.el.remove(); });
   desenhar();
@@ -795,6 +960,9 @@ function desenharPainel(p){
 }
 function desenhar(){
   visiveis().forEach(desenharPainel);
+  const g = document.getElementById("extGraf"), uno = +document.getElementById("layout").value === 1 && innerWidth > 980;
+  const hm = uno && paineis[0] ? paineis[0].mapa.clientHeight : 0;
+  g.style.height = Math.max(240, uno ? hm - 40 : 300) + "px";
   desenharGrafExt();
   document.getElementById("quadro").value = t; document.getElementById("quadroNum").value = t;
   document.getElementById("nomeQuadro").textContent = `${D.arquivos[t]} · ${T("quadro")} ${t}/${N-1} · ${T("estados")[D.estado[t]] || D.estado[t]}`;
@@ -834,6 +1002,8 @@ function aplicarIdioma(){
   document.getElementById("leitura").textContent = T("lerCursor") + " " + T("dicaZoom");
   const c = document.getElementById("carregando"); if (c) c.textContent = T("carregando");
   paineis.forEach(traduzirPainel);
+  if (document.getElementById("extGrafico")) opcoesGrafico();
+  document.querySelectorAll(".uEixo").forEach(e => e.textContent = D.u_eixo);
   contarExport();
   desenhar();
 }
@@ -846,7 +1016,10 @@ async function renderFigura(tt, fs, comTitulo, alvo){
   const wPainel = 620*fs, est = estiloExp(fs);
   const asp = (D.y1_mm - D.y0_mm)/(D.x1_mm - D.x0_mm), hPainel = 26*fs + (wPainel - 46*fs - 86*fs)*asp + 38*fs;
   const cab = comTitulo ? 44*fs : 0, gap = 10*fs;
-  let w = Math.round(cols*wPainel + (cols + 1)*gap), h = Math.round(cab + linhas*hPainel + (linhas + 1)*gap);
+  // layout 1 com extensômetro: amostra à esquerda, curva à direita (como na tela)
+  const comGraf = ps.length === 1 && (EXT.serie || (ENS && document.getElementById("extGrafico").value === "curva"));
+  const wGraf = comGraf ? 480*fs : 0, hGraf = Math.max(hPainel, 300*fs);
+  let w = Math.round(cols*wPainel + (cols + 1)*gap + (comGraf ? wGraf + gap : 0)), h = Math.round(cab + linhas*(comGraf ? hGraf : hPainel) + (linhas + 1)*gap);
   w += w % 2; h += h % 2;                                   // dimensões pares (exigência do H.264)
   const cv = alvo || document.createElement("canvas");
   if (cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
@@ -856,11 +1029,24 @@ async function renderFigura(tt, fs, comTitulo, alvo){
     ctx.fillStyle = "#111"; ctx.font = `600 ${17*fs}px system-ui,sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "top";
     ctx.fillText(`${D.amostra}`, gap, gap);
     ctx.fillStyle = "#444"; ctx.font = `${12*fs}px system-ui,sans-serif`;
-    ctx.fillText(`${D.arquivos[tt]} · ${T("quadro")} ${tt}/${N-1} · ${T("deformada")} · ${D.calibrado ? decimal(String(D.escala_um_px)) + " µm/px" : T("semCal")} · ${D.programa}`, gap, gap + 22*fs);
+    const vf = ENS ? num_(valEnsaio()[tt]) : NaN;
+    ctx.fillText(`${D.arquivos[tt]} · ${T("quadro")} ${tt}/${N-1}` + (ENS ? ` · t = ${decimal(ENS.t[tt].toFixed(2))} s` + (isFinite(vf) ? ` · ${decimal(vf.toFixed(1))} ${unEnsaio()}` : "") : "")
+      + ` · ${T("deformada")} · ${D.calibrado ? decimal(String(D.escala_um_px)) + " µm/px" : T("semCal")} · ${D.programa}`, gap, gap + 22*fs);
   }
   const im = await fundoPronto(tt);
   ps.forEach((p, j) => { const cx = gap + (j % cols)*(wPainel + gap), cy = cab + gap + Math.floor(j/cols)*(hPainel + gap);
     desenharPainelEm(ctx, cx, cy, wPainel, p.k, tt, est, im); });
+  if (comGraf){
+    const gx = gap*2 + wPainel, gy = cab + gap, ve = valEnsaio();
+    const partes = [ENS ? `t = ${decimal(ENS.t[tt].toFixed(2))} s` : `${T("quadro")} ${tt}`];
+    if (ENS && isFinite(num_(ve[tt]))) partes.push(`${ENS.S ? "σ" : "F"} = ${decimal(num_(ve[tt]).toFixed(1))} ${unEnsaio()}`);
+    if (EXT.serie && isFinite(EXT.serie[tt])) partes.push(`ε = ${decimal((100*EXT.serie[tt]).toFixed(2))} %`);
+    ctx.fillStyle = est.ink; ctx.font = `600 ${14*fs}px system-ui,sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillText(partes.join(" · "), gx + 4*fs, gy + 4*fs);
+    ctx.save(); ctx.translate(gx, gy + 26*fs); ctx.scale(fs, fs);
+    grafExtEm(ctx, wGraf/fs, (hGraf - 26*fs)/fs, {...est, fs: 1}, tt);
+    ctx.restore();
+  }
   return cv;
 }
 const nomeBase = () => `${D.pasta}`.replace(/[^\w.-]+/g, "_");
@@ -988,9 +1174,11 @@ function contarExport(){
   document.getElementById("btnCancelar").onclick = () => { cancelar = true; };
   document.getElementById("extAuto").onclick = sugerirExt;
   document.getElementById("extMarcar").onclick = () => { parar(); EXT.marcando = 1; irPara(0); };
-  document.getElementById("extLimpar").onclick = () => { EXT.A = EXT.B = EXT.serie = null; EXT.marcando = 0; desenhar(); };
+  document.getElementById("extLimpar").onclick = () => { EXT.A = EXT.B = EXT.serie = null; EXT.marcando = 0; extParaCampos(); desenhar(); };
   document.getElementById("extCSV").onclick = csvExt;
   document.getElementById("extComp").onchange = e => { EXT.comp = e.target.value; calcularExt(); desenhar(); };
+  opcoesGrafico(); document.getElementById("extGrafico").onchange = desenharGrafExt;
+  ["extL0", "extXc", "extYc", "extFaixa"].forEach(id => document.getElementById(id).addEventListener("change", () => extDeCampos(id)));
   document.addEventListener("keydown", ev => {
     if (["INPUT","SELECT"].includes(ev.target.tagName) && ev.target.type !== "range" && ev.target.type !== "checkbox") return;
     if (ev.key === " "){ ev.preventDefault(); tocando ? parar() : tocar(); }

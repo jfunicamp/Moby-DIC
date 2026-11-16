@@ -12,6 +12,7 @@ moby-dic viewer FOLDER ...   (re)build the viewer of a result
 moby-dic mudic ...           muDIC backend (if installed)
 moby-dic example [NAME]      generate a synthetic example dataset
 moby-dic video FILE ...      recommend the test interval of a video and extract its frames
+moby-dic tensile RESULT ...  correlate a result with the tensile test curve
 moby-dic --version | --help
 ```
 
@@ -71,6 +72,17 @@ moby-dic example                       # list the examples
 moby-dic example necking               # writes Documents\Moby-DIC\examples\necking
 moby-dic example all --output D:\tmp   # all examples in another folder
 ```
+
+## tensile
+
+```bash
+moby-dic tensile RESULT --curve test.csv --fps 5                  # synchronise by the fracture (automatic)
+moby-dic tensile RESULT --curve test.csv --fps 5 --first-time -0.9   # manual: time of the first image
+moby-dic tensile RESULT --curve test.csv --fps 5 --fracture-frame 1345 --fracture-time 267.83
+```
+
+Columns are detected from their names; override them with `--time-col`, `--load-col`,
+`--stress-col` and `--position-col` (1 = first column). The viewer is rebuilt unless `--no-viewer`.
 
 ## video
 

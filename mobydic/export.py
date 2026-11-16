@@ -17,7 +17,7 @@ from matplotlib.collections import PolyCollection
 from matplotlib.tri import Triangulation
 
 
-ESTADOS_EN = {"referencia": "reference", "convergiu": "converged", "quadro_ruim": "bad frame",
+ESTADOS_EN = {"referencia": "reference", "convergiu": "converged", "quadro_ruim": "bad frame", "ponte": "bridge",
               "nao_convergiu": "not converged", "erro": "error", "sem_registro": "no record"}
 
 

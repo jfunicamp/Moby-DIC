@@ -14,6 +14,10 @@ Regras:
 - Passo da grade: ≈ subset/5; janela de deformação: 5 pontos; elemento Q4: ≈ subset.
 - Foco: nitidez (energia do Laplaciano) nos quadros amostrados; se varia mais de 3×, recomenda
   igualar a nitidez e indica os quadros com refoco.
+- Qualidade do padrão (speckle ou textura natural, como a microestrutura atacada): erro previsto do
+  deslocamento σu ≈ √2·σ_ruído / √SSSIG em cada subset (Pan et al. 2008), com SSSIG = soma dos
+  quadrados dos gradientes de intensidade no subset (na direção menos texturizada) e σ_ruído
+  estimado na própria imagem. Regiões com σu > 0,05 px praticamente não são medíveis.
 """
 
 import json
@@ -36,7 +40,15 @@ def bordas_amostra(img):
     """(y_min, y_max, x_min, x_max) da faixa clara (amostra pintada), origem inferior."""
     h, w = img.shape
     perfil_y = img[:, int(0.15 * w):int(0.85 * w)].mean(1)
+    # sem fundo escuro (a amostra ocupa o campo todo, como em microscopia): imagem inteira
+    if np.percentile(perfil_y, 5) > 0.33 * np.percentile(perfil_y, 95):
+        return 0, h - 1, 0, w - 1
     lim = 0.5 * (np.percentile(perfil_y, 95) + np.percentile(perfil_y, 5))
+    # faixas escuras com textura (ex.: camada atacada) também são amostra; fundo é escuro e liso
+    textura = np.abs(img - nd.uniform_filter(img, 9))[:, int(0.15 * w):int(0.85 * w)].mean(1)
+    escuras, claras = perfil_y <= lim, perfil_y > lim
+    if escuras.any() and claras.any() and np.median(textura[escuras]) >= 0.5 * np.median(textura[claras]):
+        return 0, h - 1, 0, w - 1
     linhas = np.nonzero(perfil_y > lim)[0]
     y0, y1 = (int(linhas.min()), int(linhas.max())) if linhas.size else (0, h - 1)
     meio = img[y0 + (y1 - y0) // 4: y1 - (y1 - y0) // 4]
@@ -71,6 +83,41 @@ def tamanho_speckle(img, roi):
     return 2.0 * r
 
 
+def ruido_imagem(img):
+    """Desvio-padrão do ruído (níveis de cinza) estimado numa única imagem (Immerkær 1996, versão
+    robusta pela mediana, pouco sensível às bordas da textura)."""
+    k = np.array([[1, -2, 1], [-2, 4, -2], [1, -2, 1]], float)
+    c = nd.convolve(np.asarray(img, float), k)[1:-1, 1:-1]
+    return float(1.4826 * np.median(np.abs(c)) / 6.0)
+
+
+def mapa_qualidade(img, subset, ruido=None):
+    """Erro previsto do deslocamento (px) para um subset centrado em cada pixel, na pior direção.
+
+    SSSIG generalizado: menor autovalor da matriz de estrutura [[Σgx², Σgxgy], [Σgxgy, Σgy²]] do
+    subset. Para textura isotrópica é igual ao menor de Σgx² e Σgy²; para listras (inclusive
+    diagonais) vai a ~0, porque o deslocamento ao longo das listras não é observável."""
+    img = np.asarray(img, float)
+    ruido = ruido if ruido is not None else ruido_imagem(img)
+    gx, gy = nd.sobel(img, 1) / 8.0, nd.sobel(img, 0) / 8.0
+    a = subset * subset
+    sx, sy = nd.uniform_filter(gx * gx, subset) * a, nd.uniform_filter(gy * gy, subset) * a
+    sxy = nd.uniform_filter(gx * gy, subset) * a
+    lmin = 0.5 * (sx + sy) - np.sqrt(0.25 * (sx - sy) ** 2 + sxy ** 2)
+    return np.sqrt(2.0) * max(ruido, 0.3) / np.sqrt(np.maximum(lmin, 0.0) + 1e-9)
+
+
+def qualidade_padrao(img, subset, roi=None, ruido=None):
+    """Resumo da qualidade do padrão na ROI: mediana de σu e frações com σu < 0,02 e < 0,05 px."""
+    ruido = ruido if ruido is not None else ruido_imagem(img)
+    m = mapa_qualidade(img, subset, ruido)
+    if roi is not None:
+        x1, y1, x2, y2 = (int(round(v)) for v in roi)
+        m = m[max(0, y1):y2, max(0, x1):x2]
+    return {"ruido_gl": round(ruido, 2), "mediana_sigma_px": round(float(np.median(m)), 4),
+            "frac_boa": round(float((m < 0.02).mean()), 3), "frac_aceitavel": round(float((m < 0.05).mean()), 3)}
+
+
 def gradiente_medio(img, roi):
     """Média de |∇I| na ROI (qualidade do padrão: maior é melhor)."""
     x1, y1, x2, y2 = (int(round(v)) for v in roi)
@@ -90,9 +137,20 @@ def sugerir(pasta, inicio=1, fim=None, a_cada=1, n_amostras=8):
         raise ValueError("A pasta precisa ter pelo menos duas imagens.")
     sel = selecionar(todos, inicio, fim, a_cada)
     idx = sorted(set(np.linspace(0, len(sel) - 1, min(n_amostras, len(sel))).round().astype(int).tolist()))
-    imgs = {i: ler_cinza(sel[i]) for i in idx}
+    imgs, origem = {}, {}
+    for i in idx:                       # amostra: arquivo ilegível é trocado pelo vizinho legível
+        for j in sorted(range(len(sel)), key=lambda q: abs(q - i))[:20]:
+            try:
+                imgs[i] = ler_cinza(sel[j])
+                origem[i] = j
+                break
+            except Exception:  # noqa: BLE001
+                continue
+    idx = [i for i in idx if i in imgs]
+    if not idx:
+        raise ValueError("Não foi possível ler as imagens da pasta.")
     h, w = imgs[idx[0]].shape
-    with Image.open(sel[0]) as im:
+    with Image.open(sel[origem[idx[0]]]) as im:
         modo = im.mode
 
     bordas = [bordas_amostra(imgs[i]) for i in idx]
@@ -118,6 +176,7 @@ def sugerir(pasta, inicio=1, fim=None, a_cada=1, n_amostras=8):
     y1, y2 = ya + margem, yb - margem
     roi = [float(x1), float(y1), float(x2), float(y2)]
 
+    padrao = qualidade_padrao(imgs[idx[0]], subset, roi)
     nit = [nitidez(imgs[i], roi) for i in idx]
     variacao = max(nit) / max(min(nit), 1e-9)
     brilho = [float(imgs[i][int(y1):int(y2), int(x1):int(x2)].mean()) for i in idx]
@@ -129,7 +188,7 @@ def sugerir(pasta, inicio=1, fim=None, a_cada=1, n_amostras=8):
         "speckle_px": round(speckle, 2), "gradiente_medio": round(gradiente_medio(imgs[idx[0]], roi), 2),
         "subset_px": subset, "passo_px": passo, "janela_deformacao": 5, "elemento_q4_px": subset + 5,
         "quadros_amostrados": idx, "nitidez": [round(v, 2) for v in nit], "brilho": [round(v, 1) for v in brilho],
-        "variacao_nitidez": round(variacao, 2), "igualar_nitidez": bool(variacao > 3.0),
+        "variacao_nitidez": round(variacao, 2), "igualar_nitidez": bool(variacao > 3.0), "padrao": padrao,
         "referencia": "automatica", "zncc_ref": 0.98, "zncc_ref_p05": 0.95, "falha_ref": 0.003,
         "zncc_min": 0.8,
     }

@@ -42,7 +42,7 @@ from scipy import ndimage as nd  # noqa: E402
 
 from .export import exportar  # noqa: E402
 from .i18n import t as tx  # noqa: E402
-from .imagens import ler_cinza, listar_imagens  # noqa: E402
+from .imagens import legivel, ler_cinza, listar_imagens  # noqa: E402
 
 # Cache da compilação do numba. No executável, o código-fonte deste módulo vai junto (para o numba
 # localizá-lo) e o cache fica na pasta numba_cache das configurações do usuário (configurar_numba).
@@ -51,6 +51,7 @@ CACHE = True
 # Validação dos pontos medidos
 GRADIENTE_MAX = 0.5      # |∂u/∂x| etc. entre referência e quadro atual acima disso = warp degenerado
 DESVIO_MAX_PX = 2.0      # deslocamento que difere mais que isso da mediana dos vizinhos = falso casamento
+PONTE_SEGUIDOS = 3       # quadros ruins seguidos (referência = último quadro bom) até aceitar uma ponte
 
 
 def ler_imagem(caminho):
@@ -389,8 +390,16 @@ def analisar(args):
     todos = listar_imagens(args.imagens)
     fim = args.fim if args.fim else len(todos)
     arquivos = todos[args.inicio - 1:fim][::args.a_cada]
-    if args.limite:
-        arquivos = arquivos[:args.limite]
+    # arquivos corrompidos ficam de fora (com aviso); com --limit, só verifica até ter o suficiente
+    legiveis, ilegiveis = [], []
+    for a in arquivos:
+        (legiveis if legivel(a) else ilegiveis).append(a)
+        if args.limite and len(legiveis) >= args.limite:
+            break
+    if ilegiveis:
+        print(tx("Aviso: arquivos ilegíveis ignorados: ", "Warning: unreadable files skipped: ")
+              + ", ".join(a.name for a in ilegiveis), flush=True)
+    arquivos = legiveis
     n = len(arquivos)
     if n < 2:
         raise ValueError("A pasta precisa de pelo menos dois PNGs.")
@@ -426,6 +435,8 @@ def analisar(args):
     ref = 0
     bons = [0]
     trocar_ref = False
+    ruins_seguidos = 0                 # quadros ruins seguidos com a referência = último quadro bom
+    ponte_pendente = False             # ponte aceita: o próximo quadro troca de referência
     nitidez_cache = {}
     def nit(i):
         if i not in nitidez_cache:
@@ -441,9 +452,11 @@ def analisar(args):
         # nem base do chute: o quadro seguinte é correlacionado com o último quadro bom.
         g = bons[-1]
         if args.passo_referencia > 0:
-            trocar = t % args.passo_referencia == 0
+            # passo fixo; uma ponte aceita no quadro anterior troca a referência em qualquer modo
+            trocar = t % args.passo_referencia == 0 or ponte_pendente
         else:  # automático: troca quando a correlação com a referência piorou
             trocar = trocar_ref
+        ponte_pendente = False
         if trocar and g != ref:
             ref = g
             params[:, 1:3] = 0.0
@@ -581,7 +594,25 @@ def analisar(args):
         for k in range(t - 1):
             if k != ref:
                 coef[k] = None
-        if ativo.mean() >= args.fracao_minima:
+        # Ponte: se a referência é o próprio último quadro bom, um quadro ruim não tem como sair
+        # do impasse (não há troca de referência nem resgate possível) e todos os seguintes falham
+        # do mesmo jeito, por exemplo depois de um refoco com a referência desfocada. Após
+        # PONTE_SEGUIDOS quadros ruins seguidos nessa situação, o atual vira referência se ainda
+        # mediu ao menos metade da fração mínima; os pontos não medidos seguem pela posição
+        # interpolada dos vizinhos, como os pontos que falham num quadro bom.
+        ponte = (ativo.mean() < args.fracao_minima and g == ref and ruins_seguidos >= PONTE_SEGUIDOS - 1
+                 and ativo.mean() >= args.fracao_minima / 2)
+        if ponte:
+            bons.append(t)
+            estados.append("ponte")
+            trocar_ref = ponte_pendente = True
+            ruins_seguidos = 0
+            print(tx(f"  quadro {t}: {PONTE_SEGUIDOS} quadros ruins seguidos contra a referência {ref}; "
+                     f"o quadro {t} ({ativo.mean():.1%} dos pontos) passa a ser a referência (ponte)",
+                     f"  frame {t}: {PONTE_SEGUIDOS} bad frames in a row against reference {ref}; "
+                     f"frame {t} ({ativo.mean():.1%} of the points) becomes the reference (bridge)"), flush=True)
+        elif ativo.mean() >= args.fracao_minima:
+            ruins_seguidos = 0
             bons.append(t)
             estados.append("convergiu")
             # Troca a referência quando a correlação piora na mediana, na cauda (p05) ou quando uma
@@ -592,6 +623,7 @@ def analisar(args):
                           or (1 - ok_ref.mean()) > args.falha_ref)
         else:
             estados.append("quadro_ruim")
+            ruins_seguidos = ruins_seguidos + 1 if g == ref else 0
             trocar_ref = True
         linha = dict(indice=t, arquivo=arquivos[t].name, referencia=ref, estado=estados[-1],
                      sigma_igualacao_px=round(sigma_q, 3), resgatados=resgatados,
@@ -634,7 +666,8 @@ def analisar(args):
         "falha_ref": args.falha_ref, "resgate": args.resgate,
         "referencias_usadas": sorted({l["referencia"] for l in log}), "zncc_min": args.zncc_min,
         "busca_inteira_px": args.busca, "igualar_nitidez": args.igualar_nitidez, "fracao_minima": args.fracao_minima,
-        "quadros_ruins": [i for i, e in enumerate(estados) if e == "quadro_ruim"], "maxit": args.maxit,
+        "quadros_ruins": [i for i, e in enumerate(estados) if e == "quadro_ruim"],
+        "quadros_ponte": [i for i, e in enumerate(estados) if e == "ponte"], "maxit": args.maxit,
         "escala_um_px": args.escala_um_px, "calibrado": args.calibrado, "quadros": n,
         "tempo_total_s": time.time() - t_total, "threads": args.threads,
         "eixos": "origem no canto inferior esquerdo da imagem; x para a direita, y para cima",

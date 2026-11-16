@@ -47,7 +47,7 @@ NARRACAO = [
                "will all follow this choice, and you can change it later in the top bar."),
     ("inicio", "Next, you can analyse your own images, try an example, or read the documentation. We will use the "
                "built-in example: a synthetic tensile test with a growing neck, whose exact solution is known."),
-    ("imagens", "On the left is the workflow, in eight steps. Step one shows the image sequence: thirteen frames, "
+    ("imagens", "On the left is the workflow, in nine steps. Step one shows the image sequence: thirteen frames, "
                 "the first and the last images, and the sharpness of the sequence. The focus is stable. "
                 "Every parameter already has an automatic value."),
     ("escala", "Step two is the scale, in micrometres per pixel, which comes from a calibration of your set-up. "
@@ -67,19 +67,19 @@ NARRACAO = [
     ("rodando", "The analysis runs on this computer, in parallel. For every frame, the log shows the reference used, "
                 "the fraction of measured points, and the correlation quality, where one would be a perfect match."),
     ("pronto", "When the correlation is finished, the interactive viewer is built. Let's open it."),
-    ("visualizador", "The viewer opens with four panels: the horizontal and vertical displacements, and the axial "
-                     "and transverse strains. Press play to animate the test, or step through it frame by frame."),
-    ("exx", "Let's focus on the axial strain. We switch to a single panel and select the axial strain, epsilon x x, "
-            "in the last frame."),
+    ("visualizador", "The viewer shows the specimen on the left, here the axial strain over the image, and the "
+                     "digital extensometer on the right. Press play to animate the test, or step through it frame by frame."),
+    ("exx", "The extensometer is placed automatically: two material points along the loading direction, tracked by "
+            "the correlation. Its strain is plotted on the right, with the current frame in red."),
     ("leitura", "The neck has formed in the middle of the specimen. Hovering over the map reads the values. At the "
                 "centre of the neck the strain is about seventeen percent, very close to the exact value. "
                 "The small difference comes from the spatial resolution of the strain calculation."),
     ("incremento", "Derived fields are computed on the fly. The axial strain increment shows where the specimen is "
                    "deforming right now. Near the end of the test, almost all of the deformation happens in the neck."),
-    ("escalas", "Colour scales can be automatic, taken from the current frame, or typed in, and thirteen colormaps "
-                "are available."),
-    ("exportar", "The export panel saves the current figure, a range of frames as images, or a video of the animation. "
-                 "The viewer is a single file, which you can share with colleagues."),
+    ("escalas", "Each map has its own colour scale behind the scale button. The options panel holds the colormaps, "
+                "the panel layout, and the extensometer gauge, with its length and position in millimetres."),
+    ("exportar", "The export panel saves the current figure, a range of frames as images, or a video of the animation, "
+                 "with the specimen and the curve side by side. The viewer is a single file, which you can share."),
     ("docs", "The documentation, available from the top bar, explains every option and the theory behind the method, "
              "and includes more tutorials. Thank you for watching, and enjoy Moby-DIC."),
 ]
@@ -406,7 +406,7 @@ async def roteiro(page, g):
     async def visualizador():
         await page.locator("#vis").scroll_into_view_if_needed()
         await page.wait_for_timeout(800)
-        await vis.locator("#fps").select_option("5")
+        await vis.locator("#fps").evaluate("e => { e.value = '5'; e.dispatchEvent(new Event('change')); }")
         await clicar(page, vis.locator("#play"))
         await page.wait_for_timeout(5600)
         await clicar(page, vis.locator("#play"))
@@ -419,13 +419,15 @@ async def roteiro(page, g):
     await g.foto("viewer.png")
 
     async def exx():
-        await ir_ate(page, vis.locator("#layout"))
-        await vis.locator("#layout").select_option("1")
-        await page.wait_for_timeout(900)
-        campo = vis.locator("section.painel select.campo").first
-        await ir_ate(page, campo)
-        await campo.select_option("3")
-        await page.wait_for_timeout(900)
+        cv = vis.locator("section.painel canvas.mapa").first
+        caixa = await cv.bounding_box()
+        await page.mouse.move(caixa["x"] + caixa["width"] * 0.30, caixa["y"] + caixa["height"] * 0.5, steps=25)
+        await page.wait_for_timeout(1500)
+        await page.mouse.move(caixa["x"] + caixa["width"] * 0.62, caixa["y"] + caixa["height"] * 0.5, steps=35)
+        await page.wait_for_timeout(1200)
+        await ir_ate(page, vis.locator("#extGraf"))
+        await page.wait_for_timeout(1500)
+        await ir_ate(page, vis.locator("#extNums"))
     await g.segmento("exx", exx)
 
     async def leitura():
@@ -466,6 +468,8 @@ async def roteiro(page, g):
         campo = vis.locator("section.painel select.campo").first
         await campo.select_option("3")
         await page.wait_for_timeout(600)
+        await clicar(page, vis.locator("section.painel button.escalaBtn").first)
+        await page.wait_for_timeout(500)
         await clicar(page, vis.locator("section.painel button.quadroAuto").first)
         await page.wait_for_timeout(900)
         lim = vis.locator("section.painel input.lim").first
@@ -476,11 +480,17 @@ async def roteiro(page, g):
         await page.mouse.move(caixa["x"] + caixa["width"] * 0.3, y, steps=25)
         await page.mouse.up()
         await page.wait_for_timeout(700)
+        await clicar(page, vis.locator("section.painel button.auto").first)
+        await clicar(page, vis.locator("section.painel button.escalaBtn").first)
+        await clicar(page, vis.locator("#painelOpcoes summary"))
+        await vis.locator("#cmap").scroll_into_view_if_needed()
         await ir_ate(page, vis.locator("#cmap"))
         for c in ("viridis", "turbo", "jet"):
             await vis.locator("#cmap").select_option(c)
-            await page.wait_for_timeout(900)
-        await clicar(page, vis.locator("section.painel button.auto").first)
+            await page.wait_for_timeout(800)
+        await ir_ate(page, vis.locator("#extL0"))
+        await page.wait_for_timeout(1200)
+        await clicar(page, vis.locator("#painelOpcoes summary"))
     await g.segmento("escalas", escalas)
 
     async def exportar():

@@ -18,13 +18,21 @@ Each analysis writes one folder. File names are the same in both interface langu
 
 Together, `parametros.json` and `config_analise.json` are enough to reproduce an analysis.
 
+### Correlation with the tensile test
+
+| File | Content |
+|---|---|
+| `ensaio_por_quadro.csv` | per analysed frame: file, file number in the folder, test time (s), load, stress, crosshead position, median εxx and εyy (%), strain of the automatic extensometer (%) |
+| `ensaio.json` | synchronisation (method, frame rate, t₀, fracture time and file), column mapping, reduced machine curve and the per-frame values |
+| `varredura_imagens.json` | motion between consecutive images of the whole folder (cache of the fracture search) |
+
 ### Frames extracted from a video
 
 | File (frame folder) | Content |
 |---|---|
 | `frame_0001.png` … | extracted frames, 8-bit grey |
 | `frames.csv` | per frame: index, file, frame number in the video, time (s) |
-| `video_source.json` | video path, frame rate, start/end time, number of frames, codec |
+| `video_source.json` | video path, frame rate, start/end time, number of frames, codec, fracture time in the video (if detected) |
 
 ## campos.npz
 
@@ -42,7 +50,7 @@ image, x to the right, y up; row 0 is the bottom row of the grid.
 | `rotacao` | T × ny × nx | local rotation ω, radians |
 | `valido` | T × ny × nx, bool | point measured in that frame (use it as a mask) |
 | `arquivos` | T | image file name of each frame |
-| `estado` | T | frame state: `referencia`, `convergiu` (converged) or `quadro_ruim` (bad frame) |
+| `estado` | T | frame state: `referencia`, `convergiu` (converged), `quadro_ruim` (bad frame) or `ponte` (bridge: became the reference after bad frames, see [Troubleshooting](troubleshooting.md)) |
 | `escala_um_px`, `calibrado` | scalars | scale and whether it was supplied |
 
 The initial position of each point is `centro_xy_px[0]`. Values where `valido` is False are not

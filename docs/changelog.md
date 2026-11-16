@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.2.0 — 2026-11-16
+
+- **Tensile test correlation** (step 8 *Tensile test*; command `moby-dic tensile`): reads the machine
+  curve (CSV/TXT, any separator and decimal mark, columns recognised by name), detects the fracture
+  in the curve and in the images (motion jump between consecutive frames, distinguished from
+  refocusing), and aligns them with the recording frame rate; manual synchronisation by the time of
+  the first image. Writes `ensaio_por_quadro.csv` and `ensaio.json`.
+- **Viewer**: stress–strain chart of the digital extensometer, machine curve with the analysed
+  frames, test time and stress of every frame in the frame line and exported figures; extensometer
+  CSV with load and stress.
+- Video extraction records the exact fracture time in the video, so results from videos are
+  synchronised without a frame rate.
+- Unreadable (corrupted) images are skipped with a warning instead of stopping the analysis.
+- **Viewer layout**: specimen map on the left, extensometer / stress–strain chart on the right, one
+  timeline bar; display settings, 2/4-panel comparison and the extensometer gauge definition in a
+  collapsible Options panel; per-map colour-scale controls behind a *scale* button. Exported figures
+  and videos use the same side-by-side layout.
+- **Extensometer gauge definition**: L₀, centre and averaging band, editable and written to the CSV
+  header, for reproducible gauges across specimens.
+- Image-scan motion measurement corrected (OpenCV phase correlation returned a constant 0.5 px offset
+  for odd block sizes); 16-bit images keep their contrast in the scan.
+- **Variable-frame-rate videos** (microscope cameras that write a nominal rate with empty frames):
+  real frame times are read from the file and used for the motion curve, the extraction,
+  `frames.csv` and the fracture time.
+- **Pattern quality**: predicted displacement error of each subset (√2·noise/√SSSIG) summarised in
+  step 1 and drawn as a map over the step 4 preview, to judge natural textures such as etched
+  microstructures.
+- The automatic ROI uses the whole image when the specimen fills the field of view (microscopy).
+- **Reference bridge**: the correlation no longer stays stuck on a reference that stopped matching
+  (for example a blurred frame just before a refocus). After three bad frames in a row against the
+  last good frame, the current frame becomes the reference (state `ponte`, listed in
+  `parametros.json`) if it measured at least half of the minimum fraction.
+
 ## 1.1.0 — 2026-11-10
 
 - **Video input**: step 1 has a *Video file* tab. Moby-DIC measures the motion along the video and

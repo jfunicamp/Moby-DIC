@@ -72,7 +72,7 @@ analysis takes a few seconds (plus ~30 s the very first time, while the kernel i
 
 ![Run](../img/tutorial1-run.png)
 
-## 8. View the results
+## 9. View the results
 
 Click **Open in the viewer →**.
 

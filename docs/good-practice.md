@@ -15,6 +15,19 @@ parameter. The recommendations below summarise the iDICs *Good Practices Guide* 
   or spray can held far from the specimen.
 - **Matte**: glossy paint creates specular reflections that move with the surface orientation.
 
+## Natural patterns (microscopy)
+
+Under a microscope a speckle is often impractical, and the microstructure itself can serve as the
+pattern: an **etched** surface (grain boundaries, second-phase needles, pits) usually correlates
+well; a polished surface seen in polarised light or Nomarski contrast usually does not until slip
+lines or surface relief appear. Check before the test with the **pattern quality** map (step 4):
+
+- aim for > 90 % of the ROI in green (< 0.02 px) with the subset you intend to use;
+- featureless phases or layers stay red: their strain cannot be measured directly, only bridged by
+  the neighbouring textured regions;
+- the pattern itself changes as the material deforms (new slip bands, grain rotation), so the
+  correlation against the first frame degrades: keep the reference updating automatic (step 5).
+
 ## Camera and optics
 
 - **Perpendicular** to the specimen surface, with the surface in the focal plane. Small
@@ -47,7 +60,10 @@ parameter. The recommendations below summarise the iDICs *Good Practices Guide* 
 - Acquire images at a rate such that the strain increment between consecutive images is well below
   1 %; you can always analyse one image every N later.
 - Synchronise images with the load signal (time stamps or a trigger), so that stress and strain can
-  be combined.
+  be combined. Without a trigger, keep recording **until after fracture** and note the frame rate:
+  Moby-DIC aligns the fracture seen in the images with the load drop (step 8).
+- Save the images as a complete, continuous sequence (do not delete frames): the frame number is the
+  clock of the images.
 - Record the calibration image (ruler or target in the specimen plane) with the same set-up.
 
 ## Choosing analysis parameters
@@ -63,7 +79,7 @@ parameter. The recommendations below summarise the iDICs *Good Practices Guide* 
 
 | Item | Example |
 |---|---|
-| Software and version | Moby-DIC 1.1.0, subset DIC (IC-GN, ZNSSD, affine, cubic B-spline) |
+| Software and version | Moby-DIC 1.2.0, subset DIC (IC-GN, ZNSSD, affine, cubic B-spline) |
 | Camera, lens, resolution, scale | 5 MP, 100 mm macro, 1.76 µm/px |
 | Speckle technique and size | airbrushed black on white, 4 px |
 | Subset, step, strain window, VSG | 25 px, 5 px, 5 points, 45 px (79 µm) |

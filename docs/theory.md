@@ -281,11 +281,24 @@ but underestimates the peak.
 | Subset | ≈ 3.25 × speckle size, odd, between 15 and 61 px | ≥ 3 speckles across the subset for a unique, well-conditioned match |
 | Step | ≈ subset / 5 | dense grid without excessive redundancy |
 | Strain window | 5 points | compromise between noise and resolution |
-| ROI | specimen edges (bright painted band on a darker background, detected in ~8 frames across the sequence), minus a margin of max(20, subset/2 + 8) px, and 10 % of the width at each side | subsets must stay on the specimen during the whole test; room for the motion along x |
+| ROI | specimen edges (bright painted band on a darker background, detected in ~8 frames across the sequence; the whole image when the specimen fills the field, as in microscopy), minus a margin of max(20, subset/2 + 8) px, and 10 % of the width at each side | subsets must stay on the specimen during the whole test; room for the motion along x |
 | Sharpness matching | on if the sharpness of the sequence varies > 3× | refocusing or out-of-plane motion |
+| Pattern quality | predicted error σu ≈ √2 σ / √SSSIG for a subset centred at each pixel (worse of x and y), σ = image noise | how well the texture constrains the match (see below) |
 | Frame selection | all images, or one every N when there are more than 300 (≈ 250 frames) | keeps run time reasonable |
 
 All automatic values can be overridden in the interface or on the command line.
+
+**Pattern quality.** For a subset of N pixels, the standard deviation of the measured displacement
+caused by image noise σ is approximately (Pan et al. 2008)
+
+$$\sigma_u \approx \frac{\sqrt{2}\,\sigma}{\sqrt{\mathrm{SSSIG}}},\qquad \mathrm{SSSIG}_x=\sum_{\text{subset}} \left(\frac{\partial I}{\partial x}\right)^2$$
+
+(the sum of squared subset intensity gradients; Moby-DIC uses the smaller of the x and y sums, so
+a texture that is strong in only one direction is not rated as good). The noise σ is estimated in
+the image itself with Immerkær's operator (robust version, median of the absolute response). A good
+speckle gives σu of a few thousandths of a pixel; above ≈ 0.05 px the match is poorly constrained.
+This is a lower bound for random errors only: it does not include interpolation bias, out-of-plane
+motion or pattern changes during the test.
 
 ## 11. Optional muDIC backend (global DIC)
 
@@ -316,3 +329,7 @@ for most uses.
    correlation. *SoftwareX* 11, 100391, 2020.
 8. H. W. Schreier, J. R. Braasch, M. A. Sutton. Systematic errors in digital image correlation
    caused by intensity interpolation. *Optical Engineering* 39, 2915–2921, 2000.
+9. B. Pan, H. Xie, Z. Wang, K. Qian, Z. Wang. Study on subset size selection in digital image
+   correlation for speckle patterns. *Optics Express* 16, 7037–7048, 2008.
+10. J. Immerkær. Fast noise variance estimation. *Computer Vision and Image Understanding* 64,
+    300–302, 1996.

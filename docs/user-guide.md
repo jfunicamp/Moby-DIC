@@ -30,7 +30,12 @@ reports:
 - thumbnails of the first and last frames;
 - a **sharpness curve** over the sequence. If the focus varies by more than 3× (refocusing, the
   specimen moving out of the depth of field), a warning appears and sharpness matching is enabled
-  automatically (step 5).
+  automatically (step 5);
+- the **pattern quality**: the share of the ROI where the predicted displacement error of a subset
+  is below 0.02 px, with the median error and the image noise (see [Theory](theory.md#10-automatic-parameter-choices)).
+  A good speckle gives more than 95 %. Below 50 % a warning appears: the surface has little texture
+  in much of the image (no speckle, polished or bright phases) and DIC will only measure well in the
+  green regions of the quality map of step 4.
 
 **Frame selection.** By default all images are analysed, or one every N when the folder has more
 than 300 images (≈ 250 frames). Untick *Automatic* to choose the first image, the last image and
@@ -58,6 +63,13 @@ motion along the recording:
   40 and 300 and never more than the frames available in the interval. The interval between frames
   in seconds and the number of available frames are shown.
 - Untick *Automatic* to type the start and end times (s) or the number of frames.
+
+**Variable frame rate.** Some cameras (microscope cameras in particular) declare a nominal rate,
+say 100 frames/s, but store a real frame only every 0.1–0.3 s and fill the gaps with empty
+("null") frames. Moby-DIC detects this, reads the time of every real frame from the file and shows
+*Rate: variable* with the mean real rate. The motion is then measured between all consecutive real
+frames, and the extracted frames and `frames.csv` carry their true times, so the synchronisation
+with the tensile curve (step 8) stays exact.
 
 **Extract frames and continue** writes the frames as 8-bit grey PNG images to
 `<working folder>\videos\<video name>_frames`, together with `frames.csv` (the time of every
@@ -110,6 +122,12 @@ The preview draws the grid and one subset on the image, and the line below gives
 points, the **strain spatial resolution** (virtual strain gauge ≈ subset + (window − 1) × step) and
 an estimate of the run time.
 
+Tick **pattern quality** above the preview to overlay the map of the predicted displacement error
+for the chosen subset: green < 0.01 px (excellent), yellow ≈ 0.03 px, red > 0.1 px (correlation
+tends to fail or be noisy). It is the quickest way to judge whether a natural texture (an etched
+microstructure, machining marks) can replace a speckle, and which subset it needs: a larger subset
+turns yellow regions green at the cost of spatial resolution.
+
 **muDIC · Q4 / B-spline** (only when the optional `muDIC` package is installed): global
 finite-element DIC. Element size for Q4 (≈ subset + 5 px), number of control points for B-spline.
 
@@ -148,7 +166,53 @@ kept).
 At the end, the viewer is generated and you can **Open results folder** or **Open in the viewer**.
 Typical times on an 8-core laptop: ~0.1–0.5 s per frame for 5 000–20 000 points.
 
-## 8. View
+## 8. Tensile test (optional)
+
+This step correlates a result with the curve recorded by the testing machine. Every analysed frame
+gets the **test time, load and stress**, and the viewer shows the **stress–strain curve** of the
+digital extensometer. It works with any result: choose it in the *Result* menu.
+
+**1 · Machine curve.** Click the file exported by the machine (📈 CSV/TXT; separator `,` `;` or tab,
+decimal point or comma). The columns are recognised by their names (Time/Tempo, Load/Force/Força,
+Stress/Tensão, Position/Displacement); untick *Automatic* to choose them. Stress is optional: without
+it, the load is used. The **fracture in the curve** is detected automatically as the final drop of
+the load below 10 % of the maximum; earlier sudden drops (partial fractures, slips) are listed.
+
+**2 · Synchronisation.**
+
+- **Recording frame rate** (frames/s): the frame rate of the camera or of the video the images came
+  from. All images in the folder, including those not analysed, are taken as consecutive frames.
+  For frames extracted by Moby-DIC from a video (step 1, *Video file* tab) the times come from the
+  video and no frame rate is needed.
+- **By the fracture** (recommended): the specimen breaking produces, between two consecutive images,
+  a jump of motion (elastic recoil of the halves, crack opening) much larger than the normal motion
+  of the test or a refocus. Moby-DIC scans all the images, shows the motion between consecutive
+  frames, the last intact and the first broken image, and aligns that instant with the fracture in
+  the curve. You can step the fracture image with ◀ ▶.
+- **Manual**: enter the time, on the machine clock, of the first image of the folder. Use it when the
+  recording ends before fracture, or when the fracture happens outside the field of view without a
+  visible jump.
+
+The time of file *n* (1 = first in the folder) is
+
+$$t_n = t_0 + \frac{n - 1}{f}$$
+
+with the frame rate *f*. By the fracture, t₀ is chosen so that the fracture instant, between the last
+intact file and the first broken file n_f, coincides with the fracture time in the curve, t_f:
+
+$$t_0 = t_f - \frac{n_f - 1.5}{f}$$
+
+The uncertainty is about half a frame interval plus half a sampling interval of the machine
+(± 0.1 s at 5 frames/s and 20 Hz).
+
+**3 · Correlation result.** Before applying, the step shows t₀, the time span of the analysed images
+over the curve (green band) and the analysed frames on the curve. **Apply and open in the viewer**
+writes `ensaio.json` and `ensaio_por_quadro.csv` to the result folder and rebuilds the viewer.
+
+> Check the synchronisation with any other event visible in both records: in a layered specimen, a
+> partial fracture (a load drop before the final one) must coincide with a jump in the images.
+
+## 9. View
 
 The built-in [viewer](viewer.md) shows the selected result. The menu lists every result produced
 here or in the working folder; **Open a result from another folder** adds an existing result

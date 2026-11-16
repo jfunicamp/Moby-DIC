@@ -228,6 +228,108 @@ class TarefaVideo:
 TAREFA_VIDEO = TarefaVideo()
 
 
+class TarefaEnsaio:
+    """Varredura das imagens (fratura) e aplicação da correlação com o ensaio, em segundo plano."""
+    def __init__(self, alvo=None, tipo=""):
+        self.estado, self.etapa, self.feitos, self.total, self.erro, self.res, self.cancelar = "parada", "", 0, 0, "", None, False
+        self.alvo, self.tipo = alvo, tipo          # resultado e tipo da tarefa (varredura | aplicacao)
+
+    def info(self):
+        return {"id": getattr(self, "id", None), "estado": self.estado, "etapa": self.etapa, "feitos": self.feitos,
+                "total": self.total, "erro": self.erro, "resultado": self.res, "alvo": self.alvo, "tipo": self.tipo}
+
+
+TAREFAS_ENSAIO = {}                    # id -> TarefaEnsaio (as últimas, com o estado final guardado)
+TRAVA_ENSAIO = threading.Lock()
+ULTIMA_ENSAIO = [None]                 # id da tarefa mais recente
+
+
+def nova_tarefa_ensaio(alvo, tipo):
+    """Cria e registra uma tarefa se nenhuma estiver rodando (verificação e criação atômicas)."""
+    import uuid
+    with TRAVA_ENSAIO:
+        if any(t.estado == "rodando" for t in TAREFAS_ENSAIO.values()):
+            return None
+        t = TarefaEnsaio(alvo, tipo)
+        t.id = uuid.uuid4().hex[:12]
+        t.estado = "rodando"
+        TAREFAS_ENSAIO[t.id] = t
+        ULTIMA_ENSAIO[0] = t.id
+        for k in list(TAREFAS_ENSAIO)[:-20]:
+            TAREFAS_ENSAIO.pop(k, None)
+        return t
+
+
+def _pasta_imagens(resultado):
+    meta = json.loads((Path(resultado) / "parametros.json").read_text(encoding="utf-8"))
+    return Path(meta["pasta_imagens"])
+
+
+def _resumo_varredura(v):
+    from . import ensaio
+    import numpy as np
+    mov = np.asarray(v["movimento_px"])
+    passo = max(1, len(mov) // 1500)
+    return {"n": v["n"], "largura_px": v["largura_px"], "ilegiveis": v["ilegiveis"], "fratura": ensaio.fratura_imagens(v),
+            "mov": {"n": list(range(2, len(mov) + 2, passo)), "px": [round(float(x), 2) for x in mov[::passo]]}}
+
+
+def _varredura_cache(resultado):
+    """Varredura guardada no resultado, só se ainda corresponder às imagens da pasta (assinatura)."""
+    from . import ensaio
+    cache = Path(resultado) / "varredura_imagens.json"
+    if not cache.exists():
+        return None
+    try:
+        v = json.loads(cache.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return v if ensaio.varredura_valida(v, _pasta_imagens(resultado)) else None
+
+
+def varrer_ensaio(resultado, te):
+    from . import ensaio
+    try:
+        pasta = _pasta_imagens(resultado)
+        cache = Path(resultado) / "varredura_imagens.json"
+        n = len(ensaio.listar_imagens(pasta))
+        v = _varredura_cache(resultado)
+        if v is None:
+            te.total = n
+            v = ensaio.varrer_imagens(pasta, progresso=lambda i, tot: setattr(te, "feitos", i), cancelar=lambda: te.cancelar)
+            cache.write_text(json.dumps(v), encoding="utf-8")
+        te.res, te.estado = _resumo_varredura(v), "concluida"
+    except InterruptedError:
+        te.estado = "cancelada"
+    except Exception as e:  # noqa: BLE001
+        traceback.print_exc()
+        te.estado, te.erro = "erro", str(e)
+
+
+def aplicar_ensaio(d, te):
+    from . import ensaio
+    try:
+        res = Path(d["resultado"])
+        var = _varredura_cache(res)
+        col = {k: (None if v in (None, "", -1) else int(v)) for k, v in d["colunas"].items()}
+        r = ensaio.aplicar(res, d["arquivo"], col, d.get("metodo", "fratura"), d.get("fps"), d.get("t_fratura"),
+                           d.get("n_rompido"), d.get("t_primeiro"), var, escolhas=d.get("escolhas"))
+        if d.get("fps"):
+            salvar_prefs(fps_ensaio=d["fps"])
+        te.etapa = "visualizador"
+        idioma = d.get("idioma") or ler_prefs().get("idioma") or "en"
+        subprocess.run(comando_base() + ["viewer", str(res), "--lang", idioma], check=True,
+                       env={**os.environ, "MOBYDIC_LANG": idioma}, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        registrar_resultado(res)
+        te.res = {"t_primeiro_s": r["t_primeiro_s"], "t_fratura_s": r["t_fratura_s"], "n_rompido": r["n_rompido"],
+                  "imagens_cobrem_s": r["imagens_cobrem_s"], "metodo": r["metodo"], "fonte_tempo": r["fonte_tempo"],
+                  "quadros": {"t": r["quadros"]["t_s"], "F": r["quadros"]["carga"], "S": r["quadros"]["tensao"]}}
+        te.estado = "concluida"
+    except Exception as e:  # noqa: BLE001
+        traceback.print_exc()
+        te.estado, te.erro = "erro", str(e)
+
+
 def extrair_video(d):
     from . import video
     tv = TAREFA_VIDEO
@@ -237,7 +339,7 @@ def extrair_video(d):
         destino = video.pasta_livre(base, re.sub(r"[^\w.-]+", "_", Path(d["arquivo"]).stem) + "_frames")
         tv.pasta = destino
         video.extrair(d["arquivo"], float(d["inicio_s"]), float(d["fim_s"]), int(d["n"]), destino,
-                      progresso=lambda i, n: setattr(tv, "feitos", i), cancelar=lambda: tv.cancelar)
+                      progresso=lambda i, n: setattr(tv, "feitos", i), cancelar=lambda: tv.cancelar, ruptura_s=d.get("ruptura_s"))
         tv.estado = "concluida"
     except InterruptedError:
         tv.estado = "cancelada"
@@ -268,13 +370,19 @@ def listar_pastas(caminho):
     unidades = [f"{c}:\\" for c in "CDEFGHIJ" if Path(f"{c}:\\").exists()] if os.name == "nt" else ["/"]
     atalhos = [{"nome": n, "caminho": str(c)} for n, c in (("Home", Path.home()), ("Documents", Path.home() / "Documents"),
                ("Desktop", Path.home() / "Desktop")) if c.is_dir()]
+    from .ensaio import EXT_CURVA
     from .video import EXTENSOES_VIDEO
+    try:
+        dados = [{"nome": f.name, "caminho": str(f), "kb": round(f.stat().st_size / 1e3)}
+                 for f in sorted(p.iterdir(), key=lambda q: q.name.lower()) if f.is_file() and f.suffix.lower() in EXT_CURVA]
+    except OSError:
+        dados = []
     try:
         videos = [{"nome": f.name, "caminho": str(f), "mb": round(f.stat().st_size / 1e6, 1)}
                   for f in sorted(p.iterdir(), key=lambda q: q.name.lower()) if f.is_file() and f.suffix.lower() in EXTENSOES_VIDEO]
     except OSError:
         videos = []
-    return {"caminho": str(p), "pai": str(p.parent) if p.parent != p else None, "pastas": pastas, "videos": videos,
+    return {"caminho": str(p), "pai": str(p.parent) if p.parent != p else None, "pastas": pastas, "videos": videos, "dados": dados,
             "n_imagens": contar_imagens(p), "resultado": (p / "visualizador.html").exists(),
             "unidades": unidades, "atalhos": atalhos}
 
@@ -343,6 +451,23 @@ class Handler(BaseHTTPRequestHandler):
                                     "nucleos": os.cpu_count()})
             if u.path == "/api/pastas":
                 return self.enviar(listar_pastas(q.get("caminho") or ler_prefs()["ultima_pasta"]))
+            if u.path == "/api/qualidade":
+                import numpy as np
+                from matplotlib import colormaps
+                from .imagens import ler_cinza
+                sel = selecionar(listar_imagens(q["pasta"]), int(q.get("inicio", 1)), int(q["fim"]) if q.get("fim") else None,
+                                 int(q.get("a_cada", 1)))
+                img = ler_cinza(sel[max(0, min(len(sel) - 1, int(q.get("i", 0))))], origem_inferior=False)
+                m = np.log10(ap.mapa_qualidade(img, int(q.get("subset", 25))))
+                u = np.clip((m + 2.5) / 2.0, 0, 1)        # 0,003 px (verde) … 0,3 px (vermelho)
+                rgb = (colormaps["RdYlGn_r"](u)[..., :3] * 255).astype(np.uint8)
+                im = Image.fromarray(rgb)
+                largura = int(q.get("largura", 1100))
+                if im.width > largura:
+                    im = im.resize((largura, round(im.height * largura / im.width)), Image.BILINEAR)
+                buf = BytesIO()
+                im.save(buf, "PNG")
+                return self.enviar(buf.getvalue(), "image/png")
             if u.path == "/api/imagem":
                 dados = imagem_jpeg(q["pasta"], int(q.get("inicio", 1)), int(q["fim"]) if q.get("fim") else None,
                                     int(q.get("a_cada", 1)), int(q.get("i", 0)), int(q.get("largura", 1000)))
@@ -376,6 +501,67 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/video/quadro":
                 from . import video
                 return self.enviar(video.quadro_jpeg(q["arquivo"], float(q.get("t", 0)), int(q.get("largura", 900))), "image/jpeg")
+            if u.path == "/api/ensaio/curva":
+                from . import ensaio
+                import numpy as np
+                c = ensaio.ler_curva(q["arquivo"])
+                sug = dict(c["sugestao"])
+                for k in ("tempo", "carga", "tensao", "deslocamento"):
+                    if k in q:
+                        sug[k] = None if q[k] in ("", "-1") else int(q[k])
+                frat, prev, erro = None, None, None
+                try:
+                    t, F, Sv, _ = ensaio.curva_validada(c, sug)
+                    frat = ensaio.fratura_curva(t, F)
+                    passo = max(1, len(t) // 1500)
+                    prev = {"t": t[::passo].tolist(), "F": F[::passo].tolist(),
+                            "S": [None if not np.isfinite(x) else float(x) for x in Sv[::passo]] if Sv is not None else None}
+                except ValueError as e:
+                    erro = str(e)
+                salvar_prefs(ultima_pasta=str(Path(q["arquivo"]).parent))
+                return self.enviar({"arquivo": c["arquivo"], "colunas": c["colunas"], "validas": c["validas"],
+                                    "n_linhas": int(len(c["dados"])), "sugestao": c["sugestao"], "escolha": sug,
+                                    "fratura": frat, "previa": prev, "erro": erro})
+            if u.path == "/api/ensaio/info":
+                from . import ensaio
+                res = Path(q["resultado"])
+                pasta = _pasta_imagens(res)
+                todos = [a.name for a in ensaio.listar_imagens(pasta)] if pasta.is_dir() else []
+                import numpy as np
+                with np.load(res / "campos.npz") as z:
+                    arq = [str(a) for a in z["arquivos"]]
+                idx = {n: k + 1 for k, n in enumerate(todos)}
+                vid = ensaio.origem_video(pasta)
+                anterior = None
+                if (res / "ensaio.json").exists():
+                    e = json.loads((res / "ensaio.json").read_text(encoding="utf-8"))
+                    anterior = {k: e.get(k) for k in ("metodo", "fps", "t_primeiro_s", "t_fratura_s", "n_rompido",
+                                                      "colunas_idx", "escolhas")}
+                    anterior["arquivo"] = e["curva"]["arquivo"]
+                v = _varredura_cache(res)
+                var = _resumo_varredura(v) if v else None
+                return self.enviar({"pasta_imagens": str(pasta), "existe": pasta.is_dir(), "n_pasta": len(todos),
+                                    "n_analisados": len(arq), "primeiro": idx.get(arq[0]), "ultimo": idx.get(arq[-1]),
+                                    "indices": [idx.get(a) for a in arq], "video": vid, "fps_prefs": ler_prefs().get("fps_ensaio"),
+                                    "anterior": anterior, "varredura": var})
+            if u.path == "/api/ensaio/miniatura":
+                from . import ensaio
+                pasta = _pasta_imagens(q["resultado"])
+                arqs = ensaio.listar_imagens(pasta)
+                n = max(1, min(len(arqs), int(q.get("n", 1))))
+                try:
+                    im = imagem_exibicao(arqs[n - 1])
+                except Exception:  # noqa: BLE001  (arquivo ilegível)
+                    im = Image.new("L", (400, 300), 40)
+                largura = int(q.get("largura", 480))
+                if im.width > largura:
+                    im = im.resize((largura, round(im.height * largura / im.width)), Image.LANCZOS)
+                buf = BytesIO()
+                im.save(buf, "JPEG", quality=85)
+                return self.enviar(buf.getvalue(), "image/jpeg")
+            if u.path == "/api/ensaio/status":
+                te = TAREFAS_ENSAIO.get(q.get("id") or ULTIMA_ENSAIO[0] or "")
+                return self.enviar(te.info() if te else {"estado": "parada", "id": None, "alvo": None, "tipo": ""})
             if u.path == "/api/video/status":
                 return self.enviar(TAREFA_VIDEO.info())
             if u.path == "/api/status":
@@ -427,12 +613,25 @@ class Handler(BaseHTTPRequestHandler):
                 if TAREFA_VIDEO.estado == "rodando":
                     return self.enviar({"erro": "busy"}, codigo=409)
                 from . import video
-                alvo = video.indices_extracao(video.informacoes(d["arquivo"])["fps"], video.informacoes(d["arquivo"])["n_quadros"],
-                                              float(d["inicio_s"]), float(d["fim_s"]), int(d["n"]))
+                alvo = video.alvos_extracao(d["arquivo"], float(d["inicio_s"]), float(d["fim_s"]), int(d["n"]))
                 TAREFA_VIDEO.__init__()
                 TAREFA_VIDEO.estado, TAREFA_VIDEO.total = "rodando", len(alvo)
                 threading.Thread(target=extrair_video, args=(d,), daemon=True).start()
                 return self.enviar({"ok": True, "total": len(alvo)})
+            if u.path in ("/api/ensaio/varrer", "/api/ensaio/aplicar"):
+                varrer = u.path.endswith("varrer")
+                te = nova_tarefa_ensaio(str(Path(d["resultado"]).resolve()), "varredura" if varrer else "aplicacao")
+                if te is None:
+                    return self.enviar({"erro": "busy"}, codigo=409)
+                te.etapa = "varredura" if varrer else "aplicando"
+                threading.Thread(target=varrer_ensaio if varrer else aplicar_ensaio,
+                                 args=(d["resultado"] if varrer else d, te), daemon=True).start()
+                return self.enviar({"ok": True, "id": te.id, "alvo": te.alvo})
+            if u.path == "/api/ensaio/cancelar":
+                te = TAREFAS_ENSAIO.get(d.get("id") or ULTIMA_ENSAIO[0] or "")
+                if te:
+                    te.cancelar = True
+                return self.enviar({"ok": True})
             if u.path == "/api/video/cancelar":
                 TAREFA_VIDEO.cancelar = True
                 return self.enviar({"ok": True})

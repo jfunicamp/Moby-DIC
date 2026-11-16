@@ -139,6 +139,9 @@ const ERROS = {busy:["Já existe uma análise em andamento.","An analysis is alr
   sem_resultado:["A pasta não contém resultados do Moby-DIC.","The folder does not contain Moby-DIC results."]};
 const api = async (url, corpo) => { const r = await fetch(url, corpo ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(corpo)} : {});
   const j = await r.json().catch(() => ({erro:"?"})); if (!r.ok) { const e = ERROS[j.erro]; throw new Error(e ? tr(...e) : (j.erro || r.statusText)); } return j; };
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[c]));
+const mesmoCaminho = (a, b) => !!a && !!b && a.replace(/\//g, "\\").toLowerCase() === b.replace(/\//g, "\\").toLowerCase();
+const espera = ms => new Promise(ok => setTimeout(ok, ms));
 const num = (v, d=2) => (+v).toLocaleString(LANG === "en" ? "en-US" : "pt-BR", {maximumFractionDigits:d});
 
 // ------------------------------------------------------------------ estado
@@ -163,6 +166,7 @@ const ETAPAS = () => [
   {t:tr("Referência","Reference"), d:tr("atualização e robustez","updating and robustness"), f:etapaReferencia},
   {t:tr("Saída","Output"), d:tr("pasta e visualizador","folder and viewer"), f:etapaSaida},
   {t:tr("Executar","Run"), d:tr("resumo e progresso","summary and progress"), f:etapaExecutar},
+  {t:tr("Ensaio de tração","Tensile test"), d:tr("curva da máquina (opcional)","machine curve (optional)"), f:etapaEnsaio},
   {t:tr("Visualizar","View"), d:tr("mapas e animação","maps and animation"), f:etapaVisualizar},
 ];
 const roiInferior = () => { const [x1, y1, x2, y2] = S.roi.img, h = S.info.altura; return [x1, h-1-y2, x2, h-1-y1]; };
@@ -191,7 +195,7 @@ function nomeSaida(){
 function desenharFluxo(){
   const f = $("#fluxo"); f.innerHTML = ""; const et = ETAPAS();
   et.forEach((e, k) => {
-    const livre = k === 0 || k === 7 || (S.info && (k < 6 || S.feitas.has(5)));
+    const livre = k === 0 || k === 7 || k === 8 || (S.info && (k < 6 || S.feitas.has(5)));
     const el = document.createElement("div");
     el.className = "no" + (k === S.etapa ? " ativo" : "") + (S.feitas.has(k) ? " feito" : "") + (livre ? "" : " bloqueado");
     el.innerHTML = `<div class="bola">${S.feitas.has(k) && k !== S.etapa ? "✓" : k+1}</div><div><div class="t">${e.t}</div><div class="d">${e.d}</div></div>`;
@@ -225,7 +229,7 @@ function entradaNum(valor, {min, max, passo=1, desativada=false, aoMudar}){
   e.step = passo; e.disabled = desativada; e.onchange = () => aoMudar(+e.value); return e;
 }
 // Navegador de pastas reutilizável (lista + caminho). opcoes: {aoEntrar(r)}
-async function navegador(el, inicial, {aoEntrar, videos = false, aoVideo} = {}){
+async function navegador(el, inicial, {aoEntrar, videos = false, aoVideo, dados = false, aoDado} = {}){
   el.innerHTML = `<div class="lin"><input type="text" class="nvCam"><button class="peq nvAbrir">${tr("Abrir","Open")}</button></div>
     <div class="lin nvAtalhos"></div><div class="lista nvLista"></div>`;
   const listar = async (caminho) => {
@@ -238,10 +242,13 @@ async function navegador(el, inicial, {aoEntrar, videos = false, aoVideo} = {}){
       const rotulo = p => videos ? (p.n_videos ? p.n_videos + " " + tr("vídeos","videos") : "")
         : p.resultado ? tr("resultado Moby-DIC","Moby-DIC result") : p.n_imagens ? p.n_imagens + " " + tr("imagens","images") : "";
       const classe = p => videos ? (p.n_videos ? "img" : "") : p.resultado ? "res" : p.n_imagens ? "img" : "";
-      $(".nvLista", el).innerHTML = (r.pastas.map(p => `<div data-c="${encodeURIComponent(p.caminho)}"><span>📁 ${p.nome}</span><span class="badge ${classe(p)}">${rotulo(p)}</span></div>`).join("")
-        + (videos ? (r.videos || []).map(v => `<div data-v="${encodeURIComponent(v.caminho)}"><span>🎬 ${v.nome}</span><span class="badge img">${num(v.mb, 1)} MB</span></div>`).join("") : ""))
+      $(".nvLista", el).innerHTML = (r.pastas.map(p => `<div data-c="${encodeURIComponent(p.caminho)}"><span>📁 ${esc(p.nome)}</span><span class="badge ${classe(p)}">${rotulo(p)}</span></div>`).join("")
+        + (videos ? (r.videos || []).map(v => `<div data-v="${encodeURIComponent(v.caminho)}"><span>🎬 ${esc(v.nome)}</span><span class="badge img">${num(v.mb, 1)} MB</span></div>`).join("") : "")
+        + (dados ? (r.dados || []).map(v => `<div data-a="${encodeURIComponent(v.caminho)}"><span>📈 ${esc(v.nome)}</span><span class="badge img">${num(v.kb, 0)} kB</span></div>`).join("") : ""))
         || `<div><span class="nota">${videos ? tr("sem subpastas nem vídeos","no subfolders or videos") : tr("sem subpastas","no subfolders")}</span></div>`;
       el.querySelectorAll("[data-c]").forEach(d => d.onclick = () => listar(decodeURIComponent(d.dataset.c)));
+      el.querySelectorAll("[data-a]").forEach(d => d.onclick = () => { el.querySelectorAll("[data-a]").forEach(x => x.style.background = "");
+        d.style.background = "var(--soft)"; if (aoDado) aoDado(decodeURIComponent(d.dataset.a)); });
       el.querySelectorAll("[data-v]").forEach(d => d.onclick = () => { el.querySelectorAll("[data-v]").forEach(x => x.style.background = "");
         d.style.background = "var(--soft)"; if (aoVideo) aoVideo(decodeURIComponent(d.dataset.v)); });
       if (aoEntrar) aoEntrar(r);
@@ -317,7 +324,10 @@ async function carregarVideo(arquivo){
     v.a_trecho = true; v.a_n = true; autoVideo(); mostrarVideo();
   } catch(e){ $("#cardVideo").innerHTML = `<h3>${tr("Vídeo","Video")}</h3><div class="aviso">${tr("Não foi possível ler o vídeo: ","Could not read the video: ")}${e.message}</div>`; }
 }
-const disponiveisVideo = () => { const v = S.video, f = v.info.fps; return Math.max(0, Math.min(Math.round(v.fim*f), v.info.n_quadros - 1) - Math.round(v.inicio*f) + 1); };
+const disponiveisVideo = () => { const v = S.video, i = v.info, f = i.fps;
+  // taxa variável: conta os quadros reais no trecho pelos tempos lidos do arquivo
+  if (i.tempos_quadros) return i.tempos_quadros.filter(t => t >= v.inicio - 1e-6 && t <= v.fim + 1e-6).length;
+  return Math.max(0, Math.min(Math.round(v.fim*f), i.n_quadros - 1) - Math.round(v.inicio*f) + 1); };
 function nRecomendado(){
   // mesmo critério do servidor: um quadro a cada ~5 px de movimento da região mais rápida no trecho
   const v = S.video, i = v.info, c = i.curva;
@@ -333,9 +343,11 @@ function autoVideo(){
   if (v.a_n) v.n = nRecomendado().n;
 }
 function graficoAtividade(){
-  const v = S.video, i = v.info, c = i.curva, w = 320, h = 90, T = i.duracao_s || 1;
-  const mx = Math.max(...c.mov_px, i.limiar_px * 2, 1e-3), X = t => t/T*w, Y = m => h - 14 - Math.sqrt(m/mx)*(h - 22);
-  const pts = c.t.map((t, k) => `${X(t).toFixed(1)},${Y(c.mov_px[k]).toFixed(1)}`).join(" ");
+  const v = S.video, i = v.info, c = i.curva, w = 320, h = 90, T = i.duracao_s || 1, mv = c.mov_max_px || c.mov_px;
+  // escala pelo movimento durante o ensaio (sem o salto da ruptura, que fica cortado no topo)
+  const sem = mv.filter((_, k) => k !== c.k_ruptura).sort((a, b) => a - b), p98 = sem.length ? sem[Math.floor(0.98*(sem.length - 1))] : 0;
+  const mx = Math.max(1.5*p98, i.limiar_px * 2, 1e-3), X = t => t/T*w, Y = m => h - 14 - Math.sqrt(Math.min(1, m/mx))*(h - 22);
+  const pts = c.t.map((t, k) => `${X(t).toFixed(1)},${Y(mv[k]).toFixed(1)}`).join(" ");
   return `<svg class="atividade" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
     <rect x="${X(v.inicio)}" y="0" width="${Math.max(1, X(v.fim) - X(v.inicio))}" height="${h - 12}" fill="var(--auto)"/>
     <line x1="0" x2="${w}" y1="${Y(i.limiar_px)}" y2="${Y(i.limiar_px)}" stroke="var(--muted)" stroke-dasharray="3 3" stroke-width="0.8"/>
@@ -351,7 +363,8 @@ function mostrarVideo(){
   cv.innerHTML = `<h3>${tr("Vídeo","Video")}</h3>
     <div class="kv"><span>${tr("Arquivo","File")}</span><span style="word-break:break-all">${i.nome}</span>
       <span>${tr("Formato","Format")}</span><span>${i.largura} × ${i.altura} px · ${num(i.fps, 3)} ${tr("quadros/s","frames/s")} · ${i.codec || "?"} · ${num(i.tamanho_mb, 1)} MB</span>
-      <span>${tr("Duração","Duration")}</span><span>${fmtS(i.duracao_s)} · ${i.n_quadros} ${tr("quadros","frames")}</span></div>
+      <span>${tr("Duração","Duration")}</span><span>${fmtS(i.duracao_s)} · ${i.n_quadros} ${tr("quadros","frames")}</span>
+      ${i.vfr ? `<span>${tr("Taxa","Rate")}</span><span>${tr(`variável: média ${num(i.fps, 2)} quadros/s (o arquivo declara ${num(i.fps_nominal, 0)}); os tempos de cada quadro vêm do próprio arquivo`, `variable: mean ${num(i.fps, 2)} frames/s (the file declares ${num(i.fps_nominal, 0)}); frame times are read from the file`)}</span>` : ""}</div>
     ${graficoAtividade()}
     <div class="campo"><div class="nome">${tr("Trecho do ensaio","Test interval")}</div><div class="pil" id="pilT"></div>
       <div class="ctl lin" style="margin:0"><label>${tr("início","start")} <input type="number" id="vIni" min="0" step="0.01" value="${+v.inicio.toFixed(3)}"> s</label>
@@ -384,7 +397,7 @@ function mostrarVideo(){
 async function extrairVideo(){
   const v = S.video;
   try {
-    const r = await api("/api/video/extrair", {arquivo:v.arquivo, inicio_s:v.inicio, fim_s:v.fim, n:v.n, pasta_trabalho:S.pos.trabalho || S.prefs.pasta_trabalho});
+    const r = await api("/api/video/extrair", {arquivo:v.arquivo, inicio_s:v.inicio, fim_s:v.fim, n:v.n, pasta_trabalho:S.pos.trabalho || S.prefs.pasta_trabalho, ruptura_s:v.info.ruptura_s ?? null});
     $("#vExtrair").disabled = true; $("#vCancelar").hidden = false; const barra = $("#vBarra"); barra.hidden = false; barra.max = r.total;
     while (true){
       await new Promise(ok => setTimeout(ok, 400));
@@ -443,6 +456,8 @@ function mostrarInfo(){
       <div class="ajuda">${tr("Automático: todas as imagens, ou uma a cada N quando a pasta tem mais de 300 (≈ 250 quadros).","Automatic: all images, or one every N when the folder has more than 300 (≈ 250 frames).")}</div></div>
     <div class="thumbs"><figure><img src="/api/imagem?${q}&i=0"><figcaption>${tr("primeiro quadro","first frame")}</figcaption></figure>
       <figure><img src="/api/imagem?${q}&i=${i.n_quadros-1}"><figcaption>${tr("último quadro","last frame")}</figcaption></figure></div>
+    ${i.padrao ? `<div class="${i.padrao.frac_boa < 0.5 ? "aviso" : "okbox"}">${tr(`Qualidade do padrão: ${num(100*i.padrao.frac_boa, 0)} % da ROI com erro previsto do deslocamento < 0,02 px (mediana ${num(i.padrao.mediana_sigma_px, 3)} px; ruído ${num(i.padrao.ruido_gl, 1)} níveis de cinza).`, `Pattern quality: ${num(100*i.padrao.frac_boa, 0)} % of the ROI with predicted displacement error < 0.02 px (median ${num(i.padrao.mediana_sigma_px, 3)} px; noise ${num(i.padrao.ruido_gl, 1)} grey levels).`)}
+      ${i.padrao.frac_boa < 0.5 ? tr(" Pouca textura em boa parte da imagem (sem speckle, superfície lisa?): o DIC só mede bem nas regiões verdes do mapa de qualidade (etapa 4). Aumentar o subset ajuda.", " Little texture in much of the image (no speckle, smooth surface?): DIC only measures well in the green regions of the quality map (step 4). A larger subset helps.") : ""}</div>` : ""}
     ${sparkline(i.nitidez, tr(`Nitidez nos quadros amostrados (escala log) · variação ${num(i.variacao_nitidez)}×`, `Sharpness of the sampled frames (log scale) · ${num(i.variacao_nitidez)}× variation`))}
     ${i.variacao_nitidez > 3 ? `<div class="aviso">${tr(`O foco varia ${num(i.variacao_nitidez, 1)}× ao longo da sequência (refoco ou amostra saindo do plano). A igualação de nitidez será ativada automaticamente.`, `Focus varies ${num(i.variacao_nitidez, 1)}× along the sequence (refocusing or out-of-plane motion). Sharpness matching will be enabled automatically.`)}</div>` : `<div class="okbox">${tr("Foco estável ao longo da sequência.","Focus is stable along the sequence.")}</div>`}
     <div class="nav"><span class="nota">${tr("Todos os parâmetros já têm valores automáticos.","All parameters already have automatic values.")}</span>
@@ -551,7 +566,10 @@ function etapaMetodo(c){
       <div class="metodo" data-t="q4"><div class="t">muDIC · ${tr("malha","mesh")} Q4</div><div class="d">${tr("DIC global por elementos finitos bilineares (deformação constante por elemento).","Global finite-element DIC with bilinear elements (constant strain per element).")}${mudic ? "" : "<br><b>" + tr("muDIC não instalado","muDIC not installed") + "</b>"}</div></div>
       <div class="metodo" data-t="spline"><div class="t">muDIC · B-spline</div><div class="d">${tr("Superfície B-spline única: campo muito suave, resolução limitada pela memória.","Single B-spline surface: very smooth field, resolution limited by memory.")}${mudic ? "" : "<br><b>" + tr("muDIC não instalado","muDIC not installed") + "</b>"}</div></div>
     </div>
-    <div class="grid2"><div class="card" id="cPar"></div><div class="card"><h3>${tr("Pré-visualização","Preview")}</h3><canvas class="editor" id="edM"></canvas><p class="nota" id="notaGrade"></p></div></div></div>`;
+    <div class="grid2"><div class="card" id="cPar"></div><div class="card"><div class="lin" style="justify-content:space-between;margin-bottom:6px"><h3 style="margin:0">${tr("Pré-visualização","Preview")}</h3>
+      <label><input type="checkbox" id="verQual" ${S.met.verQual ? "checked" : ""}> ${tr("qualidade do padrão","pattern quality")}</label></div>
+      <canvas class="editor" id="edM"></canvas><p class="nota" id="notaGrade"></p>
+      <p class="nota" id="legQual" ${S.met.verQual ? "" : "hidden"}>${tr("Erro previsto do deslocamento para o subset escolhido (σu ≈ √2·ruído/√SSSIG): verde < 0,01 px (ótimo), amarelo ≈ 0,03 px, vermelho > 0,1 px (o DIC tende a falhar).","Predicted displacement error for the chosen subset (σu ≈ √2·noise/√SSSIG): green < 0.01 px (excellent), yellow ≈ 0.03 px, red > 0.1 px (DIC tends to fail).")}</p></div></div></div>`;
   c.querySelectorAll(".metodo").forEach(e => { const off = e.dataset.t !== "subsets" && !mudic; e.classList.toggle("off", off);
     e.classList.toggle("sel", e.dataset.t === m.tipo);
     if (!off) e.onclick = () => { m.tipo = e.dataset.t; S.ref.modo = m.tipo === "subsets" ? "automatica" : "a_cada"; ir(3); }; });
@@ -589,7 +607,15 @@ function etapaMetodo(c){
     nota = tr(`${nx} × ${ny} elementos · tempo estimado ≈ ${t(nQuadros()*2.3)}`, `${nx} × ${ny} elements · estimated time ≈ ${t(nQuadros()*2.3)}`);
   } else nota = tr(`${m.cpx} × ${m.cpy} pontos de controle · tempo estimado ≈ ${t(nQuadros()*12)}`, `${m.cpx} × ${m.cpy} control points · estimated time ≈ ${t(nQuadros()*12)}`);
   $("#notaGrade").textContent = nota;
+  $("#verQual").onchange = e => { S.met.verQual = e.target.checked; ir(3); };
+  let imQual = null;
+  if (S.met.verQual && m.tipo === "subsets"){
+    imQual = new Image();
+    imQual.src = "/api/qualidade?" + new URLSearchParams({pasta:i.pasta, inicio:S.sel.inicio, a_cada:S.sel.a_cada, i:0, subset:m.subset, largura:1100, ...(S.sel.fim ? {fim:S.sel.fim} : {})});
+    imQual.onload = () => { const cv = $("#edM"); if (cv && cv._ro) { cv._ro.disconnect(); cv._ro.observe(cv); } };
+  }
   editorROI($("#edM"), 0, (ctx, esc) => {
+    if (imQual && imQual.complete && imQual.naturalWidth){ ctx.globalAlpha = 0.6; ctx.drawImage(imQual, 0, 0, i.largura*esc, i.altura*esc); ctx.globalAlpha = 1; }
     const [a,b,cc,d] = S.roi.img; ctx.strokeStyle = "rgba(72,222,250,.9)"; ctx.fillStyle = "rgba(72,222,250,.8)";
     if (m.tipo === "subsets"){
       const salto = Math.max(1, Math.ceil(4/(m.passo*esc)));
@@ -683,11 +709,12 @@ function etapaExecutar(c){
       <tr><td>${tr("Saída","Output")}</td><td>${p.trabalho}\\${p.saida}<br>${tr("visualizador","viewer")} ${p.idioma.toUpperCase()}, ${p.cmap}</td></tr></table>
       <div class="nav"><button id="voltar7">← ${tr("Voltar","Back")}</button><div><button id="cancelar" hidden>${tr("Cancelar","Cancel")}</button> <button class="prim" id="rodar">▶ ${tr("Iniciar análise","Start analysis")}</button></div></div></div>
     <div class="card" id="cProg" hidden><h3 id="etapaTxt"></h3><progress id="barra" value="0" max="1"></progress><div class="nota" id="progTxt"></div><pre class="log" id="log"></pre>
-      <div class="nav"><button class="peq" id="abrirPasta" hidden>${tr("Abrir pasta dos resultados","Open results folder")}</button><button class="prim" id="abrirVis" hidden>${tr("Abrir no visualizador →","Open in the viewer →")}</button></div></div></div>`;
+      <div class="nav"><button class="peq" id="abrirPasta" hidden>${tr("Abrir pasta dos resultados","Open results folder")}</button><span><button class="peq" id="abrirEns" hidden>${tr("Correlacionar com o ensaio de tração…","Correlate with the tensile test…")}</button> <button class="prim" id="abrirVis" hidden>${tr("Abrir no visualizador →","Open in the viewer →")}</button></span></div></div></div>`;
   $("#voltar7").onclick = () => ir(5);
   $("#rodar").onclick = async () => { try { const r2 = await api("/api/executar", configuracao()); S.resultado = r2.saida; $("#rodar").disabled = true; acompanhar(); } catch(e) { alert(e.message); } };
   $("#cancelar").onclick = () => api("/api/cancelar", {});
-  $("#abrirVis").onclick = () => { S.feitas.add(6); ir(7); };
+  $("#abrirVis").onclick = () => { S.feitas.add(6); ir(8); };
+  $("#abrirEns").onclick = () => { S.feitas.add(6); S.ens = null; ir(7); };
   $("#abrirPasta").onclick = () => api("/api/abrir_pasta", {pasta:S.resultado});
   acompanhar(true);
 }
@@ -703,22 +730,259 @@ async function acompanhar(soUmaVez){
     $("#progTxt").textContent = s.etapa === "correlacao" ? tr(`quadro ${s.progresso} de ${s.total}`, `frame ${s.progresso} of ${s.total}`) : "";
     const lg = $("#log"), fim = lg.scrollTop + lg.clientHeight >= lg.scrollHeight - 20; lg.textContent = s.log.join("\n"); if (fim) lg.scrollTop = lg.scrollHeight;
     $("#cancelar").hidden = s.estado !== "rodando"; $("#rodar").disabled = s.estado === "rodando";
-    if (s.estado === "concluida"){ S.resultado = s.saida; $("#abrirVis").hidden = false; $("#abrirPasta").hidden = false; S.feitas.add(6); desenharFluxo(); }
+    if (s.estado === "concluida"){ S.resultado = s.saida; $("#abrirVis").hidden = false; $("#abrirEns").hidden = false; $("#abrirPasta").hidden = false; S.feitas.add(6); desenharFluxo(); }
     return s;
   };
   const s = await atualizar();
   if (s.estado === "rodando" || !soUmaVez) timerStatus = setInterval(async () => { const e = await atualizar(); if (e.estado !== "rodando") clearInterval(timerStatus); }, 1000);
 }
 
-// ------------------------------------------------------------------ 8. visualizar
+// ------------------------------------------------------------------ 8. ensaio de tração
+function interp(x, xs, ys){
+  if (!xs.length || x < xs[0] || x > xs[xs.length - 1]) return NaN;
+  let a = 0, b = xs.length - 1; while (b - a > 1){ const m = (a + b) >> 1; if (xs[m] > x) b = m; else a = m; }
+  const y0 = ys[a], y1 = ys[b]; if (y0 === null || y1 === null) return NaN; return y0 + (y1 - y0)*(x - xs[a])/((xs[b] - xs[a]) || 1);
+}
+function svgCurvaEnsaio(prev, {t_frac = null, faixa = null, pontos = null, w = 560, h = 190, yS = true} = {}){
+  const ys = (yS && prev.S) ? prev.S : prev.F, xs = prev.t, fin = ys.filter(v => v !== null && isFinite(v));
+  const x0 = xs[0], x1 = xs[xs.length - 1], y0 = Math.min(0, ...fin), y1 = Math.max(...fin) * 1.05 || 1;
+  const ml = 46, mb = 22, X = v => ml + (v - x0)/((x1 - x0) || 1)*(w - ml - 6), Y = v => h - mb - (v - y0)/((y1 - y0) || 1)*(h - mb - 8);
+  const pts = xs.map((x, i) => ys[i] === null ? null : `${X(x).toFixed(1)},${Y(ys[i]).toFixed(1)}`).filter(Boolean).join(" ");
+  let out = `<svg class="atividade" style="height:${h}px" viewBox="0 0 ${w} ${h}">`;
+  if (faixa){ const a = Math.max(ml, X(faixa[0])), b = Math.min(w - 6, X(faixa[1]));
+    if (b > a) out += `<rect x="${a}" y="4" width="${b - a}" height="${h - mb - 4}" fill="var(--auto)"/>`; }
+  out += `<line x1="${ml}" x2="${w - 6}" y1="${h - mb}" y2="${h - mb}" stroke="var(--line)"/><line x1="${ml}" x2="${ml}" y1="4" y2="${h - mb}" stroke="var(--line)"/>`;
+  out += `<polyline fill="none" stroke="var(--muted)" stroke-width="1.3" points="${pts}"/>`;
+  if (pontos) out += pontos.filter(p => isFinite(p[1])).map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="1.8" fill="var(--accent)"/>`).join("");
+  if (t_frac !== null && t_frac !== undefined) out += `<line x1="${X(t_frac)}" x2="${X(t_frac)}" y1="4" y2="${h - mb}" stroke="#c0392b" stroke-dasharray="4 3"/>`;
+  out += `<text x="${ml}" y="${h - 6}" font-size="10" fill="var(--muted)">${num(x0, 0)} s</text><text x="${w - 6}" y="${h - 6}" font-size="10" fill="var(--muted)" text-anchor="end">${num(x1, 0)} s</text>`;
+  out += `<text x="${ml - 4}" y="12" font-size="10" fill="var(--muted)" text-anchor="end">${num(y1/1.05, 0)}</text><text x="${ml - 4}" y="${h - mb}" font-size="10" fill="var(--muted)" text-anchor="end">${num(y0, 0)}</text></svg>`;
+  return out;
+}
+function svgMovimento(mov, nr){
+  const w = 560, h = 90, xs = mov.n, ys = mov.px.map(v => Math.log10(Math.max(v, 0.05))), x0 = xs[0], x1 = xs[xs.length - 1];
+  const y0 = Math.min(...ys), y1 = Math.max(...ys), X = v => 4 + (v - x0)/((x1 - x0) || 1)*(w - 8), Y = v => h - 14 - (v - y0)/((y1 - y0) || 1)*(h - 22);
+  return `<svg class="atividade" style="height:${h}px" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="var(--accent)" stroke-width="1.2" points="${xs.map((x, i) => `${X(x).toFixed(1)},${Y(ys[i]).toFixed(1)}`).join(" ")}"/>
+    ${nr ? `<line x1="${X(nr - 0.5)}" x2="${X(nr - 0.5)}" y1="2" y2="${h - 14}" stroke="#c0392b" stroke-dasharray="4 3"/>` : ""}
+    <text x="4" y="${h - 2}" font-size="9" fill="var(--muted)">${x0}</text><text x="${w - 4}" y="${h - 2}" font-size="9" fill="var(--muted)" text-anchor="end">${x1}</text></svg>
+    <div class="nota">${tr("Movimento entre quadros consecutivos (escala log); tracejado: fratura","Motion between consecutive frames (log scale); dashed: fracture")}</div>`;
+}
+async function etapaEnsaio(c){
+  c.innerHTML = `<div class="etapa"><h2>8. ${tr("Ensaio de tração","Tensile test")}</h2>
+    <p class="lead">${tr("Opcional: dá a cada quadro o tempo, a carga e a tensão da máquina, e a curva tensão × deformação no visualizador.","Optional: gives every frame the machine time, load and stress, and the stress–strain curve in the viewer.")}
+      <details class="nota" style="margin-top:4px"><summary style="cursor:pointer">${tr("Como funciona","How it works")}</summary>${tr("Os arquivos da pasta são quadros consecutivos: t(n) = t₀ + (n − 1)/fps. Pela fratura, t₀ é escolhido para que o salto de movimento entre o último quadro íntegro e o primeiro rompido coincida com a queda final da carga na curva. No modo manual, você informa t₀.","Folder files are consecutive frames: t(n) = t₀ + (n − 1)/fps. By the fracture, t₀ makes the motion jump between the last intact and the first broken frame coincide with the final load drop in the curve. In manual mode, you enter t₀.")}</details></p>
+    <div class="card"><div class="lin" style="margin:0"><label>${tr("Resultado","Result")} <select id="ensRes"></select></label><span class="nota" id="ensResInfo"></span></div></div>
+    <div id="ensCorpo"></div></div>`;
+  const lista = await api("/api/resultados").catch(() => []);
+  const sel = $("#ensRes");
+  if (!lista.length){ $("#ensCorpo").innerHTML = `<p class="nota">${tr("Nenhum resultado ainda. Rode uma análise primeiro.","No results yet. Run an analysis first.")}</p>`; return; }
+  sel.innerHTML = lista.map((r, k) => `<option value="${k}">${esc(r.nome)} · ${r.data}</option>`).join("");
+  const k0 = lista.findIndex(r => mesmoCaminho(r.caminho, S.resultado)); sel.value = k0 >= 0 ? k0 : 0;
+  sel.onchange = () => { S.ens = null; carregarEnsaio(lista[+sel.value].caminho); };
+  if (S.ens && S.ens.resultado === lista[+sel.value].caminho) montarEnsaio(); else carregarEnsaio(lista[+sel.value].caminho);
+}
+let gerEnsaio = 0;                       // só a última seleção de resultado vale
+async function carregarEnsaio(resultado){
+  const g = ++gerEnsaio; S.ens = null;
+  $("#ensCorpo").innerHTML = `<p class="nota">${tr("Lendo o resultado…","Reading the result…")}</p>`;
+  try {
+    const info = await api("/api/ensaio/info?resultado=" + encodeURIComponent(resultado));
+    if (g !== gerEnsaio) return;
+    const vid = info.video, ant = info.anterior || {};
+    const ec = ant.escolhas || {};
+    S.ens = {resultado, info, curva:null, arquivo:null, colunas: ant.colunas_idx || null, a_col: ec.a_col ?? true, metodo: ant.metodo || "fratura",
+      fps: vid ? vid.fps : (ant.fps || info.fps_prefs || null), t_frac: ec.a_tf === false ? ant.t_fratura_s : null, a_tf: ec.a_tf ?? true,
+      n_rompido: ec.a_nr === false ? ant.n_rompido : null, a_nr: ec.a_nr ?? true,
+      t_primeiro: ant.t_primeiro_s ?? 0, var: info.varredura, gerCurva: 0, carregando: false, varrendo: false, erroVar: null};
+    montarEnsaio();
+    if (ant.arquivo) carregarCurva(ant.arquivo, S.ens.a_col ? null : ant.colunas_idx);
+    if (!vid && !info.varredura && S.ens.metodo === "fratura") varrerImagens();
+  } catch(e){ if (g === gerEnsaio) $("#ensCorpo").innerHTML = `<div class="aviso">${esc(e.message)}</div>`; }
+}
+function montarEnsaio(){
+  const E = S.ens, i = E.info;
+  $("#ensResInfo").textContent = tr(`${i.n_analisados} quadros analisados (arquivos ${i.primeiro}–${i.ultimo} de ${i.n_pasta} na pasta)`, `${i.n_analisados} analysed frames (files ${i.primeiro}–${i.ultimo} of ${i.n_pasta} in the folder)`);
+  $("#ensCorpo").innerHTML = `<div class="grid2">
+      <div class="card"><h3>1 · ${tr("Curva da máquina","Machine curve")}</h3><div id="navC"></div>
+        <p class="nota">${tr("Arquivo exportado pela máquina (CSV/TXT; separador , ; ou tab). Clique num arquivo 📈.","File exported by the machine (CSV/TXT; separator , ; or tab). Click a 📈 file.")}</p><div id="ensCurva"></div></div>
+      <div class="card"><h3>2 · ${tr("Sincronização","Synchronisation")}</h3><div id="ensSync"></div></div></div>
+    <div class="card" id="ensRes3"><h3>3 · ${tr("Resultado da correlação","Correlation result")}</h3><div id="ensResumo"></div></div>`;
+  navegador($("#navC"), E.arquivo ? E.arquivo.replace(/[\\/][^\\/]*$/, "") : (S.prefs.ultima_pasta || ""), {dados:true, aoDado: a => carregarCurva(a)});
+  mostrarCurva(); mostrarSync(); mostrarResumoEnsaio();
+}
+async function carregarCurva(arquivo, colunas){
+  const E = S.ens, g = ++E.gerCurva;            // só a resposta do pedido mais recente vale
+  E.arquivo = arquivo; E.carregando = true; mostrarResumoEnsaio();
+  const q = new URLSearchParams({arquivo}); if (colunas) Object.entries(colunas).forEach(([k, v]) => q.set(k, v === null ? -1 : v));
+  let r = null, erro = null;
+  try { r = await api("/api/ensaio/curva?" + q); } catch(e){ erro = e.message; }
+  if (S.ens !== E || g !== E.gerCurva) return;
+  E.carregando = false;
+  if (erro){ E.curva = null; $("#ensCurva").innerHTML = `<div class="aviso">${tr("Não foi possível ler o arquivo: ","Could not read the file: ")}${esc(erro)}</div>`; mostrarResumoEnsaio(); return; }
+  E.curva = r; E.colunas = r.escolha; if (E.a_tf) E.t_frac = r.fratura ? r.fratura.t_s : null;
+  mostrarCurva(); mostrarResumoEnsaio();
+}
+function mostrarCurva(){
+  const E = S.ens, el = $("#ensCurva"); if (!el || !E.curva) return;
+  const c = E.curva, f = c.fratura, nomes = c.colunas;
+  const op = (k, opc) => `<select data-col="${k}" ${E.a_col ? "disabled" : ""}>${opc ? `<option value="-1">—</option>` : ""}${c.validas.map(j => `<option value="${j}" ${E.colunas[k] === j ? "selected" : ""}>${esc(nomes[j])}</option>`).join("")}</select>`;
+  const uS = c.colunas[E.colunas.tensao] || "";
+  el.innerHTML = `<div class="kv" style="margin-top:8px"><span>${tr("Arquivo","File")}</span><span style="word-break:break-all">${esc(c.arquivo.split(/[\\/]/).pop())} · ${c.n_linhas} ${tr("linhas","rows")}</span></div>
+    ${c.erro ? `<div class="aviso">${esc(c.erro)}</div>` : ""}
+    <div class="campo"><div class="nome">${tr("Colunas","Columns")}</div><div class="pil" id="pilCol"></div>
+      <div class="ctl lin" style="margin:0"><label>${tr("tempo","time")} ${op("tempo")}</label><label>${tr("carga","load")} ${op("carga")}</label>
+        <label>${tr("tensão","stress")} ${op("tensao", true)}</label><label>${tr("deslocamento","displacement")} ${op("deslocamento", true)}</label></div>
+      <div class="ajuda">${tr("Automático: pelo nome das colunas (Time/Tempo, Load/Força, Stress/Tensão, Position/Deslocamento). A tensão é opcional; sem ela, o visualizador usa a carga.","Automatic: from the column names (Time, Load/Force, Stress, Position/Displacement). Stress is optional; without it the viewer uses the load.")}</div></div>
+    ${c.previa ? svgCurvaEnsaio(c.previa, {t_frac:E.t_frac, faixa:faixaImagens(), pontos:pontosQuadros()}) : ""}
+    <div class="campo"><div class="nome">${tr("Fratura na curva","Fracture in the curve")}</div><div class="pil" id="pilTf"></div>
+      <div class="ctl"><input type="number" id="ensTf" step="0.001" value="${E.t_frac === null ? "" : +E.t_frac.toFixed(3)}"> s</div>
+      <div class="ajuda">${f ? tr(`Automático: queda final da carga para menos de 10 % da máxima (${num(f.Fmax, 0)}) entre ${num(f.t_antes_s, 2)} e ${num(f.t_depois_s, 2)} s → ${num(f.t_s, 3)} s ± ${num(f.incerteza_s, 3)} s.`, `Automatic: final load drop below 10 % of the maximum (${num(f.Fmax, 0)}) between ${num(f.t_antes_s, 2)} and ${num(f.t_depois_s, 2)} s → ${num(f.t_s, 3)} s ± ${num(f.incerteza_s, 3)} s.`)
+        + (f.quedas && f.quedas.length ? tr(` Quedas anteriores (rupturas parciais): ${f.quedas.map(q => num(q.t_s, 1) + " s").join(", ")}.`, ` Earlier drops (partial fractures): ${f.quedas.map(q => num(q.t_s, 1) + " s").join(", ")}.`) : "")
+        : tr("Nenhuma fratura encontrada na curva (a carga não cai a menos de 10 % da máxima). Informe o tempo ou use a sincronização manual.","No fracture found in the curve (the load does not fall below 10 % of the maximum). Enter the time or use manual synchronisation.")}</div></div>`;
+  $("#pilCol").appendChild(pilula(E.a_col, v => { E.a_col = v; if (v) carregarCurva(E.arquivo); else mostrarCurva(); }));
+  $("#pilTf").appendChild(pilula(E.a_tf, v => { E.a_tf = v; if (v) E.t_frac = c.fratura ? c.fratura.t_s : null; mostrarCurva(); mostrarResumoEnsaio(); }));
+  el.querySelectorAll("[data-col]").forEach(s2 => s2.onchange = () => { const col = {...E.colunas}; col[s2.dataset.col] = +s2.value < 0 ? null : +s2.value; carregarCurva(E.arquivo, col); });
+  const tf = $("#ensTf"); tf.disabled = E.a_tf; tf.onchange = () => { E.t_frac = +tf.value; mostrarCurva(); mostrarResumoEnsaio(); };
+}
+async function varrerImagens(){
+  const E0 = S.ens, alvo = E0.resultado;
+  E0.erroVar = null; E0.varrendo = true; mostrarSync();
+  let id = null;
+  while (true){
+    if (!id){ try { id = (await api("/api/ensaio/varrer", {resultado:alvo})).id; } catch(e){ /* outra tarefa em andamento */ } }
+    await espera(500);
+    const st = await api("/api/ensaio/status" + (id ? "?id=" + id : "")).catch(() => null);
+    const E = S.ens; if (E !== E0) return;                                     // o usuário trocou de resultado
+    if (!st) continue;
+    const minha = !!id && st.id === id;
+    const el = $("#ensVar");
+    if (st.estado === "rodando"){
+      if (el) el.innerHTML = minha ? `<p class="nota">${tr(`Procurando a fratura nas imagens: ${st.feitos} de ${st.total || "…"}`, `Looking for the fracture in the images: ${st.feitos} of ${st.total || "…"}`)}</p><progress value="${st.feitos}" max="${st.total || 1}"></progress>`
+        : `<p class="nota">${tr("Aguardando outra tarefa terminar…","Waiting for another task to finish…")}</p>`;
+      continue;
+    }
+    if (!minha){ id = null; continue; }                                       // a que terminou não era a nossa
+    E.varrendo = false;
+    if (st.estado === "concluida" && st.resultado){ E.var = st.resultado; if (E.a_nr) E.n_rompido = E.var.fratura ? E.var.fratura.n_rompido : null; }
+    else E.erroVar = st.erro || st.estado;
+    mostrarSync(); mostrarResumoEnsaio(); mostrarCurva(); return;
+  }
+}
+function mostrarSync(){
+  const E = S.ens, el = $("#ensSync"); if (!el) return;
+  const vid = E.info.video;
+  if (E.var && E.a_nr) E.n_rompido = E.var.fratura ? E.var.fratura.n_rompido : null;
+  el.innerHTML = `<div class="metodos" style="margin-bottom:6px">
+      <div class="metodo" data-m="fratura"><div class="t">${tr("Pela fratura","By the fracture")} <span class="tag">${tr("recomendado","recommended")}</span></div><div class="d">${tr("Alinha o instante da fratura nas imagens com a queda final da carga.","Aligns the fracture instant in the images with the final load drop.")}</div></div>
+      <div class="metodo" data-m="manual"><div class="t">${tr("Manual","Manual")}</div><div class="d">${tr("Você informa o tempo do primeiro quadro no relógio da máquina (por exemplo, quando a gravação termina antes da fratura).","You enter the time of the first frame on the machine clock (e.g. when the recording ends before fracture).")}</div></div></div>
+    ${vid ? `<div class="okbox">${tr(`Quadros extraídos do vídeo ${esc(vid.video.split(/[\\/]/).pop())} a ${num(vid.fps, 3)} quadros/s: os tempos de cada quadro vêm do vídeo.`, `Frames extracted from the video ${esc(vid.video.split(/[\\/]/).pop())} at ${num(vid.fps, 3)} frames/s: frame times come from the video.`)}</div>`
+      : `<div class="campo"><div class="nome">${tr("Taxa de quadros da gravação","Recording frame rate")}</div><div class="pil"></div>
+      <div class="ctl"><input type="number" id="ensFps" min="0.001" step="any" value="${E.fps ?? ""}"> ${tr("quadros/s","frames/s")}</div>
+      <div class="ajuda">${tr("Quadros por segundo da câmera ou do vídeo de onde vieram as imagens da pasta (todas as imagens da pasta, inclusive as não analisadas, são consideradas quadros consecutivos).","Frames per second of the camera or video the folder images came from (all images in the folder, including those not analysed, are taken as consecutive frames).")}</div></div>`}
+    <div id="ensMet"></div>`;
+  el.querySelectorAll(".metodo").forEach(m => { m.classList.toggle("sel", m.dataset.m === E.metodo); m.onclick = () => { E.metodo = m.dataset.m; mostrarSync(); mostrarResumoEnsaio();
+    if (E.metodo === "fratura" && !vid && !E.var && !E.varrendo) varrerImagens(); }; });
+  const fp = $("#ensFps"); if (fp) fp.onchange = () => { E.fps = +fp.value > 0 ? +fp.value : null; mostrarResumoEnsaio(); mostrarCurva(); };
+  const m = $("#ensMet");
+  if (E.metodo === "manual"){
+    m.innerHTML = `<div class="campo"><div class="nome">${tr("Tempo do primeiro quadro","Time of the first frame")}</div><div class="pil"></div>
+      <div class="ctl"><input type="number" id="ensT0" step="0.01" value="${E.t_primeiro ?? 0}"> s</div>
+      <div class="ajuda">${tr("Tempo, no relógio da máquina, do primeiro arquivo da pasta de imagens (negativo se a gravação começou antes do ensaio).","Time, on the machine clock, of the first file in the image folder (negative if the recording started before the test).")}</div></div>`;
+    const t0 = $("#ensT0"); t0.onchange = () => { E.t_primeiro = +t0.value; mostrarResumoEnsaio(); mostrarCurva(); };
+    return;
+  }
+  if (vid){ m.innerHTML = vid.ruptura_s != null ? `<p class="nota">${tr(`Fratura no vídeo em ${num(vid.ruptura_s, 3)} s (detectada na extração dos quadros).`, `Fracture in the video at ${num(vid.ruptura_s, 3)} s (detected when the frames were extracted).`)}</p>`
+    : `<div class="aviso">${tr("A fratura não foi detectada neste vídeo; use a sincronização manual.","No fracture was detected in this video; use manual synchronisation.")}</div>`; return; }
+  if (!E.var){
+    m.innerHTML = `<div id="ensVar">${E.erroVar ? `<div class="aviso">${tr("A procura da fratura falhou: ","The fracture search failed: ")}${esc(E.erroVar)}</div>
+        <div class="lin"><button class="peq" id="ensRetry">${tr("Tentar de novo","Try again")}</button><button class="peq" id="ensManual">${tr("Usar o modo manual","Use manual mode")}</button></div>`
+      : E.varrendo ? `<p class="nota">${tr("Procurando a fratura nas imagens…","Looking for the fracture in the images…")}</p>`
+      : `<button class="peq" id="ensRetry">${tr("Procurar a fratura nas imagens","Look for the fracture in the images")}</button>`}</div>`;
+    const rt = $("#ensRetry"); if (rt) rt.onclick = varrerImagens;
+    const mn = $("#ensManual"); if (mn) mn.onclick = () => { E.metodo = "manual"; mostrarSync(); mostrarResumoEnsaio(); };
+    return;
+  }
+  const fr = E.var.fratura, nr = E.n_rompido, thumb = n => "/api/ensaio/miniatura?" + new URLSearchParams({resultado:E.resultado, n, largura:360});
+  m.innerHTML = `<div id="ensVar">
+    <div class="campo"><div class="nome">${tr("Fratura nas imagens","Fracture in the images")}</div><div class="pil" id="pilNr"></div>
+      <div class="ctl lin" style="margin:0"><button class="peq" id="nrMenos">◀</button><input type="number" id="ensNr" min="2" max="${E.var.n}" value="${nr ?? ""}"><button class="peq" id="nrMais">▶</button></div>
+      <div class="ajuda">${fr ? tr(`Automático: maior salto de movimento entre quadros consecutivos (${num(fr.salto_px, 0)} px; normal ≈ ${num(fr.mediana_px, 1)} px): a amostra rompe entre os arquivos ${fr.n_intacto} e ${fr.n_rompido}. O número é o primeiro arquivo já rompido.`, `Automatic: largest motion jump between consecutive frames (${num(fr.salto_px, 0)} px; typical ≈ ${num(fr.mediana_px, 1)} px): the specimen breaks between files ${fr.n_intacto} and ${fr.n_rompido}. The number is the first file already broken.`)
+        : tr("Nenhum salto de fratura nas imagens (a gravação deve terminar antes da fratura). Use a sincronização manual ou indique o arquivo.","No fracture jump in the images (the recording probably ends before fracture). Use manual synchronisation or enter the file.")}
+        ${E.var.ilegiveis.length ? tr(` Arquivos ilegíveis: ${esc(E.var.ilegiveis.join(", "))}.`, ` Unreadable files: ${esc(E.var.ilegiveis.join(", "))}.`) : ""}</div></div>
+    ${nr ? `<div class="thumbs"><figure><img src="${thumb(nr - 1)}"><figcaption>${tr("último íntegro","last intact")} · ${nr - 1}</figcaption></figure>
+      <figure><img src="${thumb(nr)}"><figcaption>${tr("primeiro rompido","first broken")} · ${nr}</figcaption></figure></div>` : ""}
+    ${svgMovimento(E.var.mov, nr)}</div>`;
+  $("#pilNr").appendChild(pilula(E.a_nr, v => { E.a_nr = v; mostrarSync(); mostrarResumoEnsaio(); mostrarCurva(); }));
+  const e2 = $("#ensNr"); e2.disabled = E.a_nr;
+  const muda = n => { E.a_nr = false; E.n_rompido = Math.max(2, Math.min(E.var.n, n)); mostrarSync(); mostrarResumoEnsaio(); mostrarCurva(); };
+  e2.onchange = () => muda(+e2.value); $("#nrMenos").onclick = () => muda((E.n_rompido || 2) - 1); $("#nrMais").onclick = () => muda((E.n_rompido || 1) + 1);
+}
+function t0Ensaio(){
+  const E = S.ens; if (!E) return null;
+  if (E.info.video) return null;                      // calculado no servidor a partir dos tempos do vídeo
+  if (E.metodo === "manual") return E.t_primeiro ?? 0;
+  if (!(E.fps > 0) || E.t_frac === null || !E.n_rompido) return null;
+  return E.t_frac - (E.n_rompido - 1.5)/E.fps;
+}
+function faixaImagens(){ const E = S.ens, t0 = t0Ensaio(); if (t0 === null || !E.fps) return null;
+  return [t0 + (E.info.primeiro - 1)/E.fps, t0 + (E.info.ultimo - 1)/E.fps]; }
+function pontosQuadros(){ const E = S.ens, t0 = t0Ensaio(); if (t0 === null || !E.fps || !E.curva || !E.curva.previa) return null;
+  const pv = E.curva.previa, ys = pv.S || pv.F; return E.info.indices.map(n => { const tt = t0 + (n - 1)/E.fps; return [tt, interp(tt, pv.t, ys)]; }); }
+function mostrarResumoEnsaio(){
+  const E = S.ens, el = $("#ensResumo"); if (!el) return;
+  const t0 = t0Ensaio(), fx = faixaImagens(), vid = E.info.video;
+  let falta = E.carregando ? tr("Lendo a curva…","Reading the curve…")
+    : !E.curva ? tr("Escolha o arquivo da curva da máquina.","Choose the machine curve file.")
+    : E.curva.erro ? E.curva.erro
+    : (!vid && !(E.fps > 0)) ? tr("Informe a taxa de quadros da gravação.","Enter the recording frame rate.")
+    : (E.metodo === "fratura" && E.t_frac === null) ? tr("Falta o tempo da fratura na curva.","The fracture time in the curve is missing.")
+    : (E.metodo === "fratura" && !vid && !E.n_rompido) ? (E.var ? tr("Falta o arquivo da fratura nas imagens (ou use Manual).","The fracture file in the images is missing (or use Manual).") : tr("Aguardando a varredura das imagens…","Waiting for the image scan…"))
+    : (E.metodo === "fratura" && vid && vid.ruptura_s == null) ? tr("Fratura indisponível neste vídeo; use Manual.","Fracture not available for this video; use Manual.") : "";
+  let txt = "";
+  if (!falta && t0 !== null && fx){
+    const pv = E.curva.previa, tc0 = pv.t[0], tc1 = pv.t[pv.t.length - 1];
+    txt = `<div class="kv"><span>${tr("Primeiro arquivo da pasta","First file in the folder")}</span><span>t₀ = <b>${num(t0, 3)} s</b> ${tr("no relógio da máquina","on the machine clock")}</span>
+      <span>${tr("Imagens analisadas","Analysed images")}</span><span>${num(fx[0], 2)} – ${num(fx[1], 2)} s · ${tr("intervalo","interval")} ${num(1/E.fps*(E.info.indices.length > 1 ? (E.info.indices[1] - E.info.indices[0]) : 1), 3)} s</span>
+      ${E.metodo === "fratura" ? `<span>${tr("Fratura","Fracture")}</span><span>${tr(`curva ${num(E.t_frac, 3)} s ↔ entre os arquivos ${E.n_rompido - 1} e ${E.n_rompido}`, `curve ${num(E.t_frac, 3)} s ↔ between files ${E.n_rompido - 1} and ${E.n_rompido}`)}</span>` : ""}</div>
+      ${fx[0] < tc0 - 1 || fx[1] > tc1 + 1 ? `<div class="aviso">${tr("Parte das imagens fica fora do intervalo da curva; esses quadros ficam sem carga.","Some images fall outside the curve time range; those frames get no load.")}</div>` : ""}
+      ${E.metodo === "fratura" && E.fps && Math.abs(t0) > 30 ? `<div class="aviso">${tr("O primeiro quadro fica longe do início do ensaio: confira a taxa de quadros e a fratura escolhida.","The first frame is far from the start of the test: check the frame rate and the chosen fracture.")}</div>` : ""}`;
+  } else if (!falta && vid) txt = `<p class="nota">${tr("Os tempos serão calculados a partir do vídeo ao aplicar.","Times will be computed from the video when applying.")}</p>`;
+  el.innerHTML = (falta ? `<p class="nota">${falta}</p>` : txt) +
+    `<div class="nav"><span class="nota" id="ensEstado">${tr("Grava ensaio.json e ensaio_por_quadro.csv no resultado e gera o visualizador de novo.","Writes ensaio.json and ensaio_por_quadro.csv to the result and rebuilds the viewer.")}</span>
+     <button class="prim" id="ensAplicar" ${falta ? "disabled" : ""}>${tr("Aplicar e abrir no visualizador →","Apply and open in the viewer →")}</button></div>`;
+  $("#ensAplicar").onclick = aplicarEnsaio;
+}
+async function aplicarEnsaio(){
+  const E = S.ens;
+  try {
+    let id;
+    try {
+      id = (await api("/api/ensaio/aplicar", {resultado:E.resultado, arquivo:E.arquivo, colunas:E.colunas, metodo:E.metodo, fps:E.fps,
+        t_fratura:E.t_frac, n_rompido: E.info.video ? null : E.n_rompido, t_primeiro:E.t_primeiro, idioma:LANG,
+        escolhas:{a_col:E.a_col, a_tf:E.a_tf, a_nr:E.a_nr}})).id;
+    } catch(e){ alert(tr("Aguarde a tarefa em andamento terminar e tente de novo.","Wait for the running task to finish and try again.")); return; }
+    $("#ensAplicar").disabled = true;
+    while (true){
+      await espera(600);
+      if (S.ens !== E) return;                                                 // o usuário saiu deste resultado
+      const st = await api("/api/ensaio/status?id=" + id); const es = $("#ensEstado");
+      if (st.id !== id) continue;
+      if (st.estado === "rodando"){ if (es) es.textContent = st.etapa === "visualizador" ? tr("Gerando o visualizador…","Building the viewer…") : tr("Correlacionando…","Correlating…"); continue; }
+      if (st.estado !== "concluida"){ if (es) es.textContent = tr("Erro: ","Error: ") + st.erro; const b = $("#ensAplicar"); if (b) b.disabled = false; return; }
+      S.resultado = E.resultado; S.feitas.add(7); ir(8); return;
+    }
+  } catch(e){ alert(e.message); }
+}
+
+// ------------------------------------------------------------------ 9. visualizar
 async function etapaVisualizar(c){
-  c.innerHTML = `<div class="etapa" style="max-width:none"><h2>8. ${tr("Visualizar","View")}</h2>
+  c.innerHTML = `<div class="etapa" style="max-width:none"><h2>9. ${tr("Visualizar","View")}</h2>
     <div class="lin"><label>${tr("Resultado","Result")} <select id="resSel"></select></label>
       <button class="peq" id="abrirOutro">${tr("Abrir resultado de outra pasta…","Open a result from another folder…")}</button>
       <a id="novaAba" target="_blank">${tr("abrir em nova aba ↗","open in a new tab ↗")}</a><button class="peq" id="pastaRes">${tr("abrir pasta","open folder")}</button><span class="nota" id="resInfo"></span></div>
     <div class="galeria nota" id="galeria"></div><iframe class="vis" id="vis"></iframe></div>`;
   $("#abrirOutro").onclick = async () => { const p = await escolherPasta(tr("Pasta de um resultado do Moby-DIC","Folder of a Moby-DIC result"), S.prefs.pasta_trabalho);
-    if (!p) return; try { const r = await api("/api/abrir_resultado", {pasta:p}); S.resultado = r.caminho; ir(7); } catch(e) { alert(e.message); } };
+    if (!p) return; try { const r = await api("/api/abrir_resultado", {pasta:p}); S.resultado = r.caminho; ir(8); } catch(e) { alert(e.message); } };
   const lista = await api("/api/resultados"), sel = $("#resSel");
   if (!lista.length){ $("#vis").remove(); $("#novaAba").remove(); $("#pastaRes").remove(); c.querySelector(".etapa").insertAdjacentHTML("beforeend", `<p class="nota">${tr("Nenhum resultado ainda. Rode uma análise ou abra um resultado existente.","No results yet. Run an analysis or open an existing result.")}</p>`); return; }
   sel.innerHTML = lista.map((r, k) => `<option value="${k}">${r.nome} · ${r.data}</option>`).join("");

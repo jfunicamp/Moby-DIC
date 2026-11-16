@@ -28,8 +28,16 @@ viewer with its own *Language* selector.
 sequence must have the same size.
 
 **The automatic ROI is wrong.** The detector looks for a bright specimen on a darker background
-with the load along x. For other set-ups (dark specimen, vertical loading, full-field speckle),
-draw the ROI by hand in step 3.
+with the load along x, and uses the whole image when the specimen fills the field (microscopy). For
+other set-ups (dark specimen, vertical loading), draw the ROI by hand in step 3.
+
+**No speckle (microscopy, natural texture).** Look at the pattern quality in step 1 and the quality
+map in step 4. Etched microstructures often work; smooth or bright phases do not. See
+[Good practice](good-practice.md#natural-patterns-microscopy).
+
+**A video reports a strange frame rate or duration.** Microscope cameras often write AVI files with
+a nominal rate (e.g. 100 frames/s) and empty frames in between. Moby-DIC reads the real frame times
+(*Rate: variable* in step 1); nothing needs to be entered.
 
 **Holes at the edges of the maps.** Subsets near the specimen edges leave the speckle as the
 specimen contracts. Shrink the ROI by a few subset half-widths.
@@ -44,6 +52,14 @@ frame* if focus varies. Points that cannot be measured are reported as missing, 
 **Frames marked `quadro_ruim` (bad frame).** Fewer than 50 % of the points were measured. These
 frames never become references; the analysis continues with the next frames. If they are at the
 end of the test (fracture), drop them from the viewer with `--until-frame`.
+
+**Frames marked `ponte` (bridge).** After a refocus, the reference can be the blurred frame that
+came just before it, and every sharp frame afterwards measures fewer than 50 % of the points
+against it. When three frames in a row fail like this, the third one becomes the reference if it
+still measured at least half of the minimum fraction; the rest of the test then correlates
+normally. The unmeasured points at the bridge carry the position interpolated from their
+neighbours, so check the strain jump at that frame (a refocus also changes the magnification
+slightly). The bridge frames are listed in `parametros.json` (`quadros_ponte`).
 
 **Noisy strain maps.** Increase the strain window (7 or 9), then the subset. Check the speckle size
 and the image noise ([Good practice](good-practice.md)).

@@ -16,6 +16,19 @@ def listar_imagens(pasta):
                      key=lambda p: p.name)
 
 
+def legivel(caminho):
+    """True se o arquivo de imagem abre sem erro (detecta PNG/TIFF corrompidos sem decodificar tudo)."""
+    try:
+        with Image.open(caminho) as im:
+            if Path(caminho).suffix.lower() == ".png":
+                im.verify()          # PNG: confere o CRC de todos os blocos sem decodificar (rápido)
+            else:
+                im.load()            # JPEG/TIFF/BMP: verify() não detecta arquivo truncado; decodifica
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def selecionar(arquivos, inicio=1, fim=None, a_cada=1):
     """Subconjunto 1-indexado [inicio, fim] tomando uma imagem a cada `a_cada`."""
     return arquivos[max(1, inicio) - 1:(fim or len(arquivos))][::max(1, a_cada)]
