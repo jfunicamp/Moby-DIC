@@ -161,3 +161,37 @@ def test_taxa_variavel_sem_contagem_de_quadros():
     ts = np.concatenate([np.arange(150) / 100.0, 1.49 + 0.03 * np.arange(1, 101)])
     assert video._taxa_variavel(Cap(ts), 100.0, 0)
     assert not video._taxa_variavel(Cap(np.arange(250) / 100.0), 100.0, 0)
+
+
+@pytest.mark.skipif(_ffmpeg() is None, reason="ffmpeg (imageio-ffmpeg) indisponível")
+def test_taxa_de_aquisicao_nominal():
+    """--acquisition-fps: o k-ésimo quadro real fica em k/taxa (relógio da câmera, não o do arquivo)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        arq, _ = _video_vfr(Path(tmp))
+        FPS_AQ = 5.0
+        info = video.informacoes(arq, fps_aquisicao=FPS_AQ)
+        assert info["vfr"] and info["n_quadros"] == N
+        assert info["fps"] == FPS_AQ and info["fps_aquisicao"] == FPS_AQ
+        assert abs(info["fps_arquivo"] - video.informacoes(arq)["fps"]) < 1e-9
+        assert abs(info["duracao_s"] - N / FPS_AQ) < 1e-9
+        s = video.sugerir(arq, fps_aquisicao=FPS_AQ)
+        assert s["ruptura"]
+        assert abs(s["ruptura_s"] - (N - 1.5) / FPS_AQ) < 1e-9                # entre os quadros N−2 e N−1
+        assert abs(s["fim_s"] - (N - 2) / FPS_AQ) < 1e-9
+        assert np.allclose(s["tempos_quadros"], np.arange(N) / FPS_AQ)
+        pasta = Path(tmp) / "quadros"
+        assert video.main([str(arq), "--output", str(pasta), "--start", "0.4", "--end", str((N - 2) / FPS_AQ),
+                           "--frames", "10", "--acquisition-fps", str(FPS_AQ)]) == 0
+        with (pasta / "frames.csv").open(encoding="utf-8") as f:
+            linhas = list(csv.DictReader(f))
+        k = np.array([int(r["quadro_video"]) for r in linhas])
+        assert k[0] == 2 and k[-1] == N - 2 and len(k) == 10
+        assert np.allclose([float(r["tempo_s"]) for r in linhas], k / FPS_AQ, atol=1e-4)
+        fonte = json.loads((pasta / "video_source.json").read_text(encoding="utf-8"))
+        assert fonte["fps"] == FPS_AQ and fonte["fps_aquisicao"] == FPS_AQ and fonte["base_tempo"] == "aquisicao"
+        assert abs(fonte["ruptura_s"] - (N - 1.5) / FPS_AQ) < 1e-9
+        # a mesma ruptura nas duas bases: o quadro é o mesmo, só o relógio muda
+        ts = video.tempos_quadros(arq)
+        assert abs(np.interp(video.sugerir(arq)["ruptura_s"], ts, np.arange(N)) - (N - 1.5)) < 1e-6
+        with pytest.raises(ValueError):
+            video.informacoes(arq, fps_aquisicao=0)

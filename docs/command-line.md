@@ -90,7 +90,14 @@ Columns are detected from their names; override them with `--time-col`, `--load-
 moby-dic video test.mp4                                   # print the automatic recommendation
 moby-dic video test.mp4 --output frames                   # extract with the recommended values
 moby-dic video test.mp4 --output frames --start 12.5 --end 340 --frames 200
+moby-dic video test.avi --output frames --acquisition-fps 5           # camera set to 5 frames/s
 ```
+
+`--acquisition-fps FPS` (also `--fps-aquisicao`, `--fps-real`) uses the rate set on the camera
+instead of the clock of the file: the k-th real frame (from 0) is placed at k/FPS s. Use it when the
+recorder's clock disagrees with the camera (for example a microscope AVI with empty frames that
+stores 4.78 frames/s for a 5 frames/s acquisition). `--start` and `--end` are then in that time
+base, and `video_source.json` records `fps_aquisicao` and `fps_arquivo`.
 
 The frame folder can then be analysed with `moby-dic subsets --images frames ...`.
 

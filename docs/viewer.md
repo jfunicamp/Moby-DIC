@@ -89,10 +89,21 @@ menu offers:
   extensometer strain, with the current frame marked;
 - **test curve vs time** — the whole machine curve, the time span of the images (green), the
   fracture (dashed) and the analysed frames;
+- **stress vs crosshead position** — the whole machine curve against the crosshead position (mm),
+  the analysed frames on it and the current frame marked (offered when the curve has a position
+  column; *load vs crosshead position* when it has no stress). It needs no extensometer, so it also
+  works where DIC measured few points. The crosshead position includes the machine compliance and
+  is not the specimen strain;
 - **ε vs time** — extensometer strain against the test time.
 
-The frame line above the maps and the exported figures then show the test time and the stress of
-the current frame, and the extensometer CSV includes the load and the stress.
+The frame line above the maps and the exported figures then show the test time, the stress and the
+crosshead position of the current frame, and the extensometer CSV includes the load, the stress and
+the crosshead position. The figure and video export (layout 1) put the chosen chart next to the
+specimen; the two machine-curve charts are exported even without an extensometer.
+
+Results correlated with Moby-DIC 1.2 have no position in the reduced machine curve: the position
+chart then shows only the analysed frames. Run step 8 (or `moby-dic tensile`) again to get the whole
+curve.
 
 A long gauge gives the average (global) strain, comparable with a mechanical extensometer; a short
 gauge across a neck or a band gives the local strain there. Frames where one of the points is not

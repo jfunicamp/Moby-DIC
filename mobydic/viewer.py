@@ -172,6 +172,7 @@ def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", 
         if q["arquivo"][:len(arquivos)] == arquivos:
             corta = lambda v: v[:len(arquivos)] if v is not None else None  # noqa: E731
             ensaio = {"t": corta(q["t_s"]), "F": corta(q["carga"]), "S": corta(q["tensao"]),
+                      "D": corta(q.get("deslocamento")), "uD": e["unidades"].get("deslocamento"),
                       "uF": e["unidades"]["carga"], "uS": e["unidades"]["tensao"], "red": e["reduzida"],
                       "t_frac": e.get("t_fratura_s"), "t0": e.get("t_primeiro_s"), "metodo": e.get("metodo"),
                       "fps": e.get("fps"), "curva": Path(e["curva"]["arquivo"]).name}
@@ -420,6 +421,7 @@ const TXT = {
     extL0zero:"A componente escolhida da base é zero (por exemplo, y numa base horizontal): escolha L ou x, ou marque outra base.",
     nT:"tempo", nQ:"quadro", nS:"tensão", nF:"carga", nE:"ε extensômetro",
     extGrafico:"Gráfico", gTempo:"ε × tempo", gQuadro:"ε × quadro", gTensao:"tensão × ε (ensaio)", gCarga:"carga × ε (ensaio)", gCurva:"curva do ensaio × tempo",
+    gPosS:"tensão × posição da travessa", gPosF:"carga × posição da travessa", eixoD:u => `posição da travessa (${u})`, nD:"posição",
     eixoTm:"tempo do ensaio (s)", eixoS:u => `tensão (${u})`, eixoF:u => `carga (${u})`,
     ensaioQ:(tt, v, u) => `t = ${tt} s` + (v ? ` · ${v} ${u}` : ""), apos:"após a fratura", imagens:"imagens analisadas"},
   en: {idioma:"Language", layout:"Panels", anterior:"Previous frame (←)", proximo:"Next frame (→)", playTip:"Play/pause (space)",
@@ -450,6 +452,7 @@ const TXT = {
     extL0zero:"The chosen component of the gauge is zero (e.g. y on a horizontal gauge): choose L or x, or pick another gauge.",
     nT:"time", nQ:"frame", nS:"stress", nF:"load", nE:"extensometer ε",
     extGrafico:"Chart", gTempo:"ε vs time", gQuadro:"ε vs frame", gTensao:"stress vs ε (test)", gCarga:"load vs ε (test)", gCurva:"test curve vs time",
+    gPosS:"stress vs crosshead position", gPosF:"load vs crosshead position", eixoD:u => `crosshead position (${u})`, nD:"position",
     eixoTm:"test time (s)", eixoS:u => `stress (${u})`, eixoF:u => `load (${u})`,
     ensaioQ:(tt, v, u) => `t = ${tt} s` + (v ? ` · ${v} ${u}` : ""), apos:"after fracture", imagens:"analysed images"},
 };
@@ -680,6 +683,8 @@ const temposQ = () => ENS ? ENS.t : D.tempos;             // tempo de cada quadr
 const valEnsaio = () => ENS ? (ENS.S || ENS.F) : null;   // tensão se houver, senão carga
 const unEnsaio = () => ENS ? (ENS.S ? ENS.uS : ENS.uF) : "";
 const num_ = v => (v === null || v === undefined) ? NaN : v;
+const temPosicao = () => !!(ENS && ENS.D && ENS.D.some(v => isFinite(num_(v))));   // posição da travessa por quadro
+const graficoDoEnsaio = () => { const m = document.getElementById("extGrafico").value; return !!ENS && (m === "curva" || m === "posicao"); };
 function eixosGraf(ctx, w, h, xr, yr, xl, yl, est){
   const ml = 58, mr = 14, mt = 12, mb = 36, pw = w - ml - mr, ph = h - mt - mb;
   let [x0, x1] = xr, [y0, y1] = yr; if (x1 - x0 < 1e-9) x1 = x0 + 1; if (y1 - y0 < 1e-9) y1 = y0 + 1;
@@ -704,7 +709,8 @@ function marcaGraf(ctx, g, x, y){ if (!isFinite(x) || !isFinite(y)) return; ctx.
 function opcoesGrafico(){
   const sel = document.getElementById("extGrafico"), atual = sel.value;
   const ops = [["tempo", temposQ() ? T("gTempo") : T("gQuadro")]];
-  if (ENS){ ops.push(["tensao", ENS.S ? T("gTensao") : T("gCarga")]); ops.push(["curva", T("gCurva")]); }
+  if (ENS){ ops.push(["tensao", ENS.S ? T("gTensao") : T("gCarga")]); ops.push(["curva", T("gCurva")]);
+    if (temPosicao()) ops.push(["posicao", ENS.S ? T("gPosS") : T("gPosF")]); }
   sel.innerHTML = ops.map(([v, n]) => `<option value="${v}">${n}</option>`).join("");
   sel.value = ops.some(o => o[0] === atual) ? atual : (ENS ? "tensao" : "tempo");
 }
@@ -733,6 +739,7 @@ function resumoExt(){
   const chips = [];
   if (ENS) chips.push([decimal(ENS.t[t].toFixed(2)) + " s", T("nT")]); else chips.push([String(t), T("nQ")]);
   if (ENS){ const v = num_(ve[t]); chips.push([isFinite(v) ? decimal(v.toFixed(1)) + " " + un : "—", ENS.S ? T("nS") : T("nF")]); }
+  if (temPosicao()){ const d = num_(ENS.D[t]); chips.push([isFinite(d) ? decimal(d.toFixed(3)) + " " + (ENS.uD || "mm") : "—", T("nD")]); }
   if (EXT.serie){ const e = 100*EXT.serie[t]; chips.push([isFinite(e) ? decimal(e.toFixed(2)) + " %" : "—", T("nE")]); }
   const escH = v => String(v).replace(/[&<>"']/g, c => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[c]));
   document.getElementById("extNums").innerHTML = chips.map(([v, l]) => `<div><b>${escH(v)}</b><span>${escH(l)}</span></div>`).join("");
@@ -754,6 +761,18 @@ function grafExtEm(ctx, w, h, est, tt){
     marcaGraf(ctx, g, tq2[t], num_(ve[t]));
     return;
   }
+  if (modo === "posicao" && temPosicao()){
+    // curva completa da máquina (tensão ou carga × posição da travessa) e os quadros analisados sobre ela
+    const r = ENS.red, dq = ENS.D.map(num_), vq = ve.map(num_);
+    const temRed = !!(r.D && (r.S || r.F)), xsC = temRed ? r.D.map(num_) : dq, ysC = temRed ? (r.S || r.F).map(num_) : vq;
+    const fx = xsC.concat(dq).filter(isFinite), fy = ysC.concat(vq).filter(isFinite);
+    if (!fx.length || !fy.length) return;
+    const g = eixosGraf(ctx, w, h, [Math.min(0, ...fx), Math.max(...fx)], [Math.min(0, ...fy), Math.max(...fy)], T("eixoD")(ENS.uD || "mm"), yEns, est);
+    linhaGraf(ctx, g, xsC, ysC, temRed ? est.muted : cor, temRed ? 1.2 : 2);
+    if (temRed){ ctx.fillStyle = cor; dq.forEach((x, i) => { const y = vq[i]; if (isFinite(x) && isFinite(y)) ctx.fillRect(g.X(x) - 1.5, g.Y(y) - 1.5, 3, 3); }); }
+    marcaGraf(ctx, g, dq[t], vq[t]);
+    return;
+  }
   if (!EXT.serie) return;
   const ex = EXT.serie.map(v => 100*v), fin = ex.filter(isFinite); if (!fin.length) return;
   if (modo === "tensao" && ENS){
@@ -771,10 +790,11 @@ function csvExt(){
   if (!EXT.serie) return;
   const sep = ",", tq = temposQ();
   const linhas = [["frame", "file", ENS ? "test_time_s" : "time_s", `L_${D.u_eixo}`, "eng_strain_pct", "true_strain_pct",
-    ...(ENS ? [`load_${ENS.uF}`, ...(ENS.S ? [`stress_${ENS.uS}`] : [])] : [])].join(sep)];
+    ...(ENS ? [`load_${ENS.uF}`, ...(ENS.S ? [`stress_${ENS.uS}`] : [])] : []), ...(temPosicao() ? [`crosshead_${ENS.uD || "mm"}`] : [])].join(sep)];
   EXT.serie.forEach((e, i) => linhas.push([i, D.arquivos[i], tq ? tq[i] : "", isFinite(e) ? ((1 + e)*EXT.L0*FE).toFixed(6) : "",
     isFinite(e) ? (100*e).toFixed(5) : "", isFinite(e) ? (100*Math.log1p(e)).toFixed(5) : "",
-    ...(ENS ? [isFinite(num_(ENS.F[i])) ? ENS.F[i] : "", ...(ENS.S ? [isFinite(num_(ENS.S[i])) ? ENS.S[i] : ""] : [])] : [])].join(sep)));
+    ...(ENS ? [isFinite(num_(ENS.F[i])) ? ENS.F[i] : "", ...(ENS.S ? [isFinite(num_(ENS.S[i])) ? ENS.S[i] : ""] : [])] : []),
+    ...(temPosicao() ? [isFinite(num_(ENS.D[i])) ? ENS.D[i] : ""] : [])].join(sep)));
   const cab = `# Moby-DIC digital extensometer · ${D.amostra} · A = (${(EXT.A[0]*FE).toFixed(4)}, ${(EXT.A[1]*FE).toFixed(4)}) ${D.u_eixo}, B = (${(EXT.B[0]*FE).toFixed(4)}, ${(EXT.B[1]*FE).toFixed(4)}) ${D.u_eixo} in the initial frame (origin lower-left) · L0 = ${(EXT.L0*FE).toFixed(4)} ${D.u_eixo} · band = ${((EXT.faixa || 0)*FE).toFixed(4)} ${D.u_eixo} · measure: ${EXT.comp}`;
   baixar(new Blob([cab + "\n" + linhas.join("\n") + "\n"], {type: "text/csv"}), `${nomeBase()}_extensometer.csv`);
 }
@@ -1017,7 +1037,7 @@ async function renderFigura(tt, fs, comTitulo, alvo){
   const asp = (D.y1_mm - D.y0_mm)/(D.x1_mm - D.x0_mm), hPainel = 26*fs + (wPainel - 46*fs - 86*fs)*asp + 38*fs;
   const cab = comTitulo ? 44*fs : 0, gap = 10*fs;
   // layout 1 com extensômetro: amostra à esquerda, curva à direita (como na tela)
-  const comGraf = ps.length === 1 && (EXT.serie || (ENS && document.getElementById("extGrafico").value === "curva"));
+  const comGraf = ps.length === 1 && (EXT.serie || graficoDoEnsaio());
   const wGraf = comGraf ? 480*fs : 0, hGraf = Math.max(hPainel, 300*fs);
   let w = Math.round(cols*wPainel + (cols + 1)*gap + (comGraf ? wGraf + gap : 0)), h = Math.round(cab + linhas*(comGraf ? hGraf : hPainel) + (linhas + 1)*gap);
   w += w % 2; h += h % 2;                                   // dimensões pares (exigência do H.264)
@@ -1040,6 +1060,8 @@ async function renderFigura(tt, fs, comTitulo, alvo){
     const gx = gap*2 + wPainel, gy = cab + gap, ve = valEnsaio();
     const partes = [ENS ? `t = ${decimal(ENS.t[tt].toFixed(2))} s` : `${T("quadro")} ${tt}`];
     if (ENS && isFinite(num_(ve[tt]))) partes.push(`${ENS.S ? "σ" : "F"} = ${decimal(num_(ve[tt]).toFixed(1))} ${unEnsaio()}`);
+    if (temPosicao() && document.getElementById("extGrafico").value === "posicao" && isFinite(num_(ENS.D[tt])))
+      partes.push(`d = ${decimal(num_(ENS.D[tt]).toFixed(3))} ${ENS.uD || "mm"}`);
     if (EXT.serie && isFinite(EXT.serie[tt])) partes.push(`ε = ${decimal((100*EXT.serie[tt]).toFixed(2))} %`);
     ctx.fillStyle = est.ink; ctx.font = `600 ${14*fs}px system-ui,sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "top";
     ctx.fillText(partes.join(" · "), gx + 4*fs, gy + 4*fs);

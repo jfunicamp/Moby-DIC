@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 NOME = "Moby-DIC"
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 
 def pasta_dados_usuario():

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 — 2026-11-17
+
+- **Viewer: stress vs crosshead position.** New option in the chart menu: the whole machine curve
+  (stress, or load, against crosshead position in mm) with the analysed frames and the current frame
+  marked, like the stress–strain chart of the extensometer. It needs no extensometer and is exported
+  with figures and videos. The frame line shows the crosshead position and the extensometer CSV has
+  a `crosshead_mm` column. `ensaio.json` now keeps the position in the reduced machine curve.
+- **Acquisition rate for videos** (*Acquisition rate* in step 1; `moby-dic video --acquisition-fps`):
+  places the k-th real frame at k/rate s instead of using the recorder's clock, for recorders whose
+  clock disagrees with the camera (a microscope AVI stored 4.78 frames/s for a 5 frames/s
+  acquisition). `video_source.json` records the time base. Changing the rate does not read the video
+  again (the motion curve is cached).
+
 ## 1.2.0 — 2026-11-16
 
 - **Tensile test correlation** (step 8 *Tensile test*; command `moby-dic tensile`): reads the machine

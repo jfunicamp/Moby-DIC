@@ -71,6 +71,14 @@ say 100 frames/s, but store a real frame only every 0.1–0.3 s and fill the gap
 frames, and the extracted frames and `frames.csv` carry their true times, so the synchronisation
 with the tensile curve (step 8) stays exact.
 
+**Acquisition rate.** The times stored in the file come from the recorder's clock, which is not
+always the camera's. If you know the rate set on the camera, type it in *Acquisition rate*: the
+real frame k is then placed at k/rate s (blank = times of the file). Check against the machine
+curve: the time from the start of loading to fracture must be the same in the video and in the
+curve; a mismatch proportional to the test duration means the file clock is off. Example: a
+microscope AVI stored 4.78 frames/s for a 5 frames/s acquisition, so every time in the file was
+4.4 % too long.
+
 **Extract frames and continue** writes the frames as 8-bit grey PNG images to
 `<working folder>\videos\<video name>_frames`, together with `frames.csv` (the time of every
 frame in the video) and `video_source.json`, and opens them in the image tab as a normal sequence.

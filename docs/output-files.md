@@ -32,7 +32,7 @@ Together, `parametros.json` and `config_analise.json` are enough to reproduce an
 |---|---|
 | `frame_0001.png` … | extracted frames, 8-bit grey |
 | `frames.csv` | per frame: index, file, frame number in the video, time (s) |
-| `video_source.json` | video path, frame rate, start/end time, number of frames, codec, fracture time in the video (if detected) |
+| `video_source.json` | video path, frame rate, start/end time, number of frames, codec, fracture time in the video (if detected); time base (`arquivo` or `aquisicao`), `fps_aquisicao` (rate given by the user) and `fps_arquivo` (rate from the file's clock) |
 
 ## campos.npz
 

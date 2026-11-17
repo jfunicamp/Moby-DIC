@@ -18,6 +18,13 @@ medido por correlação de fase e toma-se o percentil 90 das magnitudes (px na r
 
 Os quadros são gravados em PNG (8 bits, tons de cinza) com ``frames.csv`` (tempo de cada quadro no
 vídeo) e ``video_source.json``. Vídeo comprimido com perdas (H.264 etc.) reduz a precisão do DIC.
+
+Taxa de aquisição nominal (``--acquisition-fps``)
+-------------------------------------------------
+Por padrão o tempo de cada quadro vem do arquivo. Há gravadores (por exemplo, AVI de microscópio com
+quadros nulos) cujo relógio não bate com o da câmera: a aquisição configurada para 5 quadros/s fica
+gravada a 4,78 quadros/s. Com a taxa de aquisição informada, o k-ésimo quadro real (k a partir de 0)
+fica em t = k / taxa; nada mais muda (os quadros lidos são os mesmos).
 """
 
 import argparse
@@ -116,7 +123,25 @@ def _taxa_variavel(cap, fps, n=0, janela=40):
     return False
 
 
-def informacoes(caminho):
+def _taxa_aquisicao(fps_aquisicao):
+    if fps_aquisicao is None or fps_aquisicao == "":
+        return None
+    f = float(fps_aquisicao)
+    if not (np.isfinite(f) and 0 < f <= 10000):
+        raise ValueError(tx("A taxa de aquisição precisa ser positiva.", "The acquisition rate must be positive."))
+    return f
+
+
+def _tempos(info):
+    """Tempo (s) de cada quadro real de um vídeo de taxa variável: do arquivo ou k / taxa de aquisição."""
+    if info.get("fps_aquisicao"):
+        return np.arange(info["n_quadros"]) / info["fps"]
+    return tempos_quadros(info["arquivo"])
+
+
+def informacoes(caminho, fps_aquisicao=None):
+    """Metadados do vídeo. Com ``fps_aquisicao``, os tempos passam a ser k / fps_aquisicao (ver o docstring)."""
+    fps_aq = _taxa_aquisicao(fps_aquisicao)
     cv2 = _cv2()
     cap = abrir(caminho)
     vfr = False
@@ -143,9 +168,13 @@ def informacoes(caminho):
         dt = float(np.median(np.diff(ts))) if n > 1 else 1 / fps
         fps = (n - 1) / (ts[-1] - ts[0]) if n > 1 and ts[-1] > ts[0] else fps
         duracao = float(ts[-1] - ts[0] + dt) if n else 0.0
+    fps_arquivo = fps
+    if fps_aq:                               # relógio da câmera no lugar do relógio do arquivo
+        fps, duracao = fps_aq, n / fps_aq
     return {"arquivo": str(Path(caminho).resolve()), "nome": Path(caminho).name, "fps": fps, "n_quadros": n,
             "duracao_s": duracao, "largura": w, "altura": h, "codec": codec, "vfr": bool(vfr),
-            "fps_nominal": fps_nominal, "tamanho_mb": round(Path(caminho).stat().st_size / 1e6, 1)}
+            "fps_nominal": fps_nominal, "fps_arquivo": fps_arquivo, "fps_aquisicao": fps_aq,
+            "tamanho_mb": round(Path(caminho).stat().st_size / 1e6, 1)}
 
 
 def _cinza(img, largura=None):
@@ -229,21 +258,28 @@ def _curva(cap, indices, largura):
     return ok_idx, quadros
 
 
-def _sugerir_vfr(info, largura=480, max_pontos=400):
-    """Taxa variável: mede o movimento entre TODOS os quadros reais consecutivos (leitura sequencial)."""
-    caminho = info["arquivo"]
-    ts = tempos_quadros(caminho)
-    n = len(ts)
-    if n < 3:
-        raise ValueError(tx("O vídeo tem menos de três quadros.", "The video has fewer than three frames."))
-    escala = info["largura"] / min(largura, info["largura"])
+@functools.lru_cache(maxsize=4)
+def _movimento_vfr_cache(caminho, tamanho, mtime_ns, n, largura, largura_video):
+    escala = largura_video / min(largura, largura_video)
     mov, prev = [], None
     for _, g in _ler_sequencial(caminho, range(n), largura):
         g = g.astype(np.float32)
         if prev is not None:
             mov.append(_movimento(prev, g, escala))
         prev = g
-    mov = np.array(mov)
+    return np.array(mov)
+
+
+def _sugerir_vfr(info, largura=480, max_pontos=400):
+    """Taxa variável: mede o movimento entre TODOS os quadros reais consecutivos (leitura sequencial).
+    O movimento fica em cache: trocar a taxa de aquisição não relê o vídeo."""
+    caminho = info["arquivo"]
+    ts = _tempos(info)
+    n = len(ts)
+    if n < 3:
+        raise ValueError(tx("O vídeo tem menos de três quadros.", "The video has fewer than three frames."))
+    st = Path(caminho).stat()
+    mov = _movimento_vfr_cache(str(Path(caminho).resolve()), st.st_size, st.st_mtime_ns, n, largura, info["largura"]).copy()
     calmos = np.sort(mov)[: max(3, len(mov) // 3)]
     mad = np.median(np.abs(calmos - np.median(calmos)))
     limiar = max(0.3, float(np.median(calmos) + 4 * 1.4826 * mad))
@@ -282,9 +318,9 @@ def _sugerir_vfr(info, largura=480, max_pontos=400):
             "tempos_quadros": [float(v) for v in ts]}
 
 
-def sugerir(caminho, amostras=60, largura=480):
+def sugerir(caminho, amostras=60, largura=480, fps_aquisicao=None):
     """Metadados + trecho e número de quadros recomendados (ver o docstring do módulo)."""
-    info = informacoes(caminho)
+    info = informacoes(caminho, fps_aquisicao)
     if info["vfr"]:
         return _sugerir_vfr(info, largura)
     n, fps = info["n_quadros"], info["fps"]
@@ -381,12 +417,12 @@ def indices_extracao(fps, n_total, inicio_s, fim_s, n):
     return _distintos(np.linspace(a, b, n), a, b)
 
 
-def alvos_extracao(caminho, inicio_s, fim_s, n, info=None):
+def alvos_extracao(caminho, inicio_s, fim_s, n, info=None, fps_aquisicao=None):
     """Quadros (índices reais) a extrair: n instantes igualmente espaçados entre início e fim."""
-    info = info or informacoes(caminho)
+    info = info or informacoes(caminho, fps_aquisicao)
     if not info["vfr"]:
         return indices_extracao(info["fps"], info["n_quadros"], inicio_s, fim_s, n)
-    ts = tempos_quadros(caminho)
+    ts = _tempos(info)
     a, b = int(np.searchsorted(ts, inicio_s - 1e-6)), int(np.searchsorted(ts, fim_s + 1e-6) - 1)
     if b <= a:
         raise ValueError(tx("O tempo final precisa ser maior que o inicial.", "The end time must be after the start time."))
@@ -395,11 +431,11 @@ def alvos_extracao(caminho, inicio_s, fim_s, n, info=None):
     return _distintos(np.interp(alvo, ts[a:b + 1], np.arange(a, b + 1)), a, b)
 
 
-def quadro_jpeg(caminho, t_s, largura=900):
+def quadro_jpeg(caminho, t_s, largura=900, fps_aquisicao=None):
     cv2 = _cv2()
-    info = informacoes(caminho)
+    info = informacoes(caminho, fps_aquisicao)
     if info["vfr"]:
-        ts = tempos_quadros(caminho)
+        ts = _tempos(info)
         k = int(np.argmin(np.abs(ts - t_s)))
         g = next((q for _, q in _ler_sequencial(caminho, [k], largura)), None)
     else:
@@ -413,10 +449,11 @@ def quadro_jpeg(caminho, t_s, largura=900):
     return cv2.imencode(".jpg", g, [cv2.IMWRITE_JPEG_QUALITY, 85])[1].tobytes()
 
 
-def extrair(caminho, inicio_s, fim_s, n, destino, progresso=None, cancelar=None, ruptura_s=None):
-    """Grava os quadros escolhidos em ``destino`` (PNG 8 bits, cinza). Devolve a pasta."""
+def extrair(caminho, inicio_s, fim_s, n, destino, progresso=None, cancelar=None, ruptura_s=None, fps_aquisicao=None):
+    """Grava os quadros escolhidos em ``destino`` (PNG 8 bits, cinza). Devolve a pasta.
+    ``inicio_s``, ``fim_s`` e ``ruptura_s`` estão na mesma base de tempo (a do arquivo, ou k / fps_aquisicao)."""
     cv2 = _cv2()
-    info = informacoes(caminho)
+    info = informacoes(caminho, fps_aquisicao)
     alvo = alvos_extracao(caminho, inicio_s, fim_s, n, info)
     destino = Path(destino)
     destino.mkdir(parents=True, exist_ok=False)
@@ -430,7 +467,7 @@ def extrair(caminho, inicio_s, fim_s, n, destino, progresso=None, cancelar=None,
             progresso(len(linhas), len(alvo))
 
     if info["vfr"]:                              # taxa variável: leitura em ordem, tempo real de cada quadro
-        ts = tempos_quadros(caminho)
+        ts = _tempos(info)
         for k, g in _ler_sequencial(caminho, alvo, None, cancelar):
             gravar(k, g, ts[k])
     else:
@@ -462,7 +499,10 @@ def extrair(caminho, inicio_s, fim_s, n, destino, progresso=None, cancelar=None,
         w.writerow(["indice", "arquivo", "quadro_video", "tempo_s"])
         w.writerows((i, a, q, f"{t:.4f}") for i, a, q, t in linhas)
     (destino / "video_source.json").write_text(json.dumps(
-        {"video": info["arquivo"], "fps": info["fps"], "taxa_variavel": info["vfr"], "inicio_s": inicio_s, "fim_s": fim_s, "quadros_pedidos": int(n),
+        {"video": info["arquivo"], "fps": info["fps"], "taxa_variavel": info["vfr"],
+         "fps_arquivo": info["fps_arquivo"], "fps_aquisicao": info["fps_aquisicao"],
+         "base_tempo": "aquisicao" if info["fps_aquisicao"] else "arquivo",
+         "inicio_s": inicio_s, "fim_s": fim_s, "quadros_pedidos": int(n),
          "quadros_extraidos": len(linhas), "intervalo_s": (linhas[-1][3] - linhas[0][3]) / max(1, len(linhas) - 1),
          "largura": info["largura"], "altura": info["altura"], "codec": info["codec"],
          "ruptura_s": ruptura_s}, ensure_ascii=False, indent=1),
@@ -491,8 +531,13 @@ def main(argv=None):
     ap.add_argument("--start", "--inicio", dest="inicio", type=float, metavar="S", help=tx("Tempo inicial (s).", "Start time (s)."))
     ap.add_argument("--end", "--fim", dest="fim", type=float, metavar="S", help=tx("Tempo final (s).", "End time (s)."))
     ap.add_argument("--frames", "--quadros", dest="quadros", type=int, metavar="N", help=tx("Número de quadros.", "Number of frames."))
+    ap.add_argument("--acquisition-fps", "--fps-aquisicao", "--fps-real", dest="fps_aquisicao", type=float, metavar="FPS",
+                    help=tx("Taxa de aquisição configurada na câmera: o k-ésimo quadro real fica em k/FPS s "
+                            "(no lugar dos tempos gravados no arquivo). --start/--end ficam nessa base.",
+                            "Acquisition rate set on the camera: the k-th real frame is placed at k/FPS s "
+                            "(instead of the times stored in the file). --start/--end use this time base."))
     a = ap.parse_args(argv)
-    s = sugerir(a.video)
+    s = sugerir(a.video, fps_aquisicao=a.fps_aquisicao)
     ini = a.inicio if a.inicio is not None else s["inicio_s"]
     fim = a.fim if a.fim is not None else s["fim_s"]
     n = a.quadros or s["n_extrair"]
@@ -504,7 +549,7 @@ def main(argv=None):
              f"(motion {s['movimento_total_px']} px{', fracture detected' if s['ruptura'] else ''})"))
     if a.saida:
         p = extrair(a.video, ini, fim, n, a.saida, progresso=lambda i, tot: print(f"\r{i}/{tot}", end="", flush=True),
-                    ruptura_s=s.get("ruptura_s"))
+                    ruptura_s=s.get("ruptura_s"), fps_aquisicao=a.fps_aquisicao)
         print("\n" + str(p))
     return 0
 

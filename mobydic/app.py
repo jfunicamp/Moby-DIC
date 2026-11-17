@@ -339,7 +339,8 @@ def extrair_video(d):
         destino = video.pasta_livre(base, re.sub(r"[^\w.-]+", "_", Path(d["arquivo"]).stem) + "_frames")
         tv.pasta = destino
         video.extrair(d["arquivo"], float(d["inicio_s"]), float(d["fim_s"]), int(d["n"]), destino,
-                      progresso=lambda i, n: setattr(tv, "feitos", i), cancelar=lambda: tv.cancelar, ruptura_s=d.get("ruptura_s"))
+                      progresso=lambda i, n: setattr(tv, "feitos", i), cancelar=lambda: tv.cancelar, ruptura_s=d.get("ruptura_s"),
+                      fps_aquisicao=d.get("fps_aquisicao"))
         tv.estado = "concluida"
     except InterruptedError:
         tv.estado = "cancelada"
@@ -495,12 +496,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.enviar([{"nome": k, "pt": d[0], "en": d[1]} for k, (_, d) in EXEMPLOS.items()])
             if u.path == "/api/video/sugerir":
                 from . import video
-                r = video.sugerir(q["arquivo"])
+                r = video.sugerir(q["arquivo"], fps_aquisicao=q.get("fps_aquisicao") or None)
                 salvar_prefs(ultima_pasta=str(Path(q["arquivo"]).parent))
                 return self.enviar(r)
             if u.path == "/api/video/quadro":
                 from . import video
-                return self.enviar(video.quadro_jpeg(q["arquivo"], float(q.get("t", 0)), int(q.get("largura", 900))), "image/jpeg")
+                return self.enviar(video.quadro_jpeg(q["arquivo"], float(q.get("t", 0)), int(q.get("largura", 900)),
+                                                    fps_aquisicao=q.get("fps_aquisicao") or None), "image/jpeg")
             if u.path == "/api/ensaio/curva":
                 from . import ensaio
                 import numpy as np
@@ -613,7 +615,8 @@ class Handler(BaseHTTPRequestHandler):
                 if TAREFA_VIDEO.estado == "rodando":
                     return self.enviar({"erro": "busy"}, codigo=409)
                 from . import video
-                alvo = video.alvos_extracao(d["arquivo"], float(d["inicio_s"]), float(d["fim_s"]), int(d["n"]))
+                alvo = video.alvos_extracao(d["arquivo"], float(d["inicio_s"]), float(d["fim_s"]), int(d["n"]),
+                                            fps_aquisicao=d.get("fps_aquisicao"))
                 TAREFA_VIDEO.__init__()
                 TAREFA_VIDEO.estado, TAREFA_VIDEO.total = "rodando", len(alvo)
                 threading.Thread(target=extrair_video, args=(d,), daemon=True).start()

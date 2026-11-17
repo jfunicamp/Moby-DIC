@@ -317,12 +317,13 @@ async function etapaVideo(c){
   if (v.info) mostrarVideo();
 }
 async function carregarVideo(arquivo){
-  const v = S.video; v.arquivo = arquivo; v.info = null;
+  const v = S.video; if (arquivo !== v.arquivo) v.fps_aq = null; v.arquivo = arquivo; v.info = null;
   $("#cardVideo").innerHTML = `<h3>${tr("Vídeo","Video")}</h3><p class="nota">${tr("Lendo o vídeo e medindo o movimento ao longo do ensaio…","Reading the video and measuring the motion along the test…")}</p>`;
   try {
-    v.info = await api("/api/video/sugerir?arquivo=" + encodeURIComponent(arquivo));
+    v.info = await api("/api/video/sugerir?" + new URLSearchParams({arquivo, ...(v.fps_aq ? {fps_aquisicao: v.fps_aq} : {})}));
     v.a_trecho = true; v.a_n = true; autoVideo(); mostrarVideo();
-  } catch(e){ $("#cardVideo").innerHTML = `<h3>${tr("Vídeo","Video")}</h3><div class="aviso">${tr("Não foi possível ler o vídeo: ","Could not read the video: ")}${e.message}</div>`; }
+  } catch(e){ v.fps_aq = null;               // sem a taxa informada, o vídeo pode ser carregado de novo
+    $("#cardVideo").innerHTML = `<h3>${tr("Vídeo","Video")}</h3><div class="aviso">${tr("Não foi possível ler o vídeo: ","Could not read the video: ")}${e.message}</div>`; }
 }
 const disponiveisVideo = () => { const v = S.video, i = v.info, f = i.fps;
   // taxa variável: conta os quadros reais no trecho pelos tempos lidos do arquivo
@@ -357,15 +358,19 @@ function graficoAtividade(){
 }
 function mostrarVideo(){
   const v = S.video, i = v.info, cv = $("#cardVideo"); if (!cv) return;
-  const q = t => "/api/video/quadro?" + new URLSearchParams({arquivo:v.arquivo, t, largura:520});
+  const q = t => "/api/video/quadro?" + new URLSearchParams({arquivo:v.arquivo, t, largura:520, ...(v.fps_aq ? {fps_aquisicao: v.fps_aq} : {})});
   const rec = nRecomendado(), disp = disponiveisVideo(), dt = v.n > 1 ? (v.fim - v.inicio)/(v.n - 1) : 0;
   const perdas = /^(h264|avc1|hevc|h265|hev1|hvc1|x264|mp4v|xvid|divx|fmp4|vp8|vp9|av01|wmv|mpg|mjpg)/i.test(i.codec || "");
   cv.innerHTML = `<h3>${tr("Vídeo","Video")}</h3>
     <div class="kv"><span>${tr("Arquivo","File")}</span><span style="word-break:break-all">${i.nome}</span>
       <span>${tr("Formato","Format")}</span><span>${i.largura} × ${i.altura} px · ${num(i.fps, 3)} ${tr("quadros/s","frames/s")} · ${i.codec || "?"} · ${num(i.tamanho_mb, 1)} MB</span>
       <span>${tr("Duração","Duration")}</span><span>${fmtS(i.duracao_s)} · ${i.n_quadros} ${tr("quadros","frames")}</span>
-      ${i.vfr ? `<span>${tr("Taxa","Rate")}</span><span>${tr(`variável: média ${num(i.fps, 2)} quadros/s (o arquivo declara ${num(i.fps_nominal, 0)}); os tempos de cada quadro vêm do próprio arquivo`, `variable: mean ${num(i.fps, 2)} frames/s (the file declares ${num(i.fps_nominal, 0)}); frame times are read from the file`)}</span>` : ""}</div>
+      ${i.fps_aquisicao ? `<span>${tr("Taxa","Rate")}</span><span>${tr(`aquisição informada: ${num(i.fps_aquisicao, 3)} quadros/s (o quadro real k fica em k/${num(i.fps_aquisicao, 3)} s; o arquivo marca ${num(i.fps_arquivo, 3)})`, `acquisition rate given: ${num(i.fps_aquisicao, 3)} frames/s (real frame k is placed at k/${num(i.fps_aquisicao, 3)} s; the file says ${num(i.fps_arquivo, 3)})`)}</span>`
+        : i.vfr ? `<span>${tr("Taxa","Rate")}</span><span>${tr(`variável: média ${num(i.fps, 2)} quadros/s (o arquivo declara ${num(i.fps_nominal, 0)}); os tempos de cada quadro vêm do próprio arquivo`, `variable: mean ${num(i.fps, 2)} frames/s (the file declares ${num(i.fps_nominal, 0)}); frame times are read from the file`)}</span>` : ""}</div>
     ${graficoAtividade()}
+    <div class="campo"><div class="nome">${tr("Taxa de aquisição","Acquisition rate")}</div>
+      <div class="ctl"><input type="number" id="vFpsAq" min="0.001" step="any" placeholder="${tr("do arquivo","from file")}" value="${v.fps_aq ?? ""}"> ${tr("quadros/s","frames/s")}</div>
+      <div class="ajuda">${tr("Em branco: tempos gravados no arquivo. Informe a taxa configurada na câmera quando o relógio do arquivo não for confiável (por exemplo, AVI de microscópio que grava 4,78 quadros/s numa aquisição de 5): o quadro real k passa a ficar em k/taxa. Confira com a curva da máquina: a duração do início do carregamento até a fratura precisa ser a mesma no vídeo e na curva.","Blank: times stored in the file. Enter the rate set on the camera when the file clock is unreliable (e.g. a microscope AVI that records 4.78 frames/s for a 5 frames/s acquisition): real frame k is then placed at k/rate. Check against the machine curve: the time from the start of loading to fracture must be the same in the video and in the curve.")}</div></div>
     <div class="campo"><div class="nome">${tr("Trecho do ensaio","Test interval")}</div><div class="pil" id="pilT"></div>
       <div class="ctl lin" style="margin:0"><label>${tr("início","start")} <input type="number" id="vIni" min="0" step="0.01" value="${+v.inicio.toFixed(3)}"> s</label>
         <label>${tr("fim","end")} <input type="number" id="vFim" min="0" step="0.01" value="${+v.fim.toFixed(3)}"> s</label></div>
@@ -390,6 +395,12 @@ function mostrarVideo(){
     if (b <= a){ alert(tr("O fim precisa ser maior que o início.","The end must be after the start.")); mostrarVideo(); return; }
     v.inicio = a; v.fim = b; autoVideo(); mostrarVideo(); };
   eI.onchange = trecho; eF.onchange = trecho;
+  $("#vFpsAq").onchange = e => { const txt = e.target.value.trim(), f = +txt;
+    if (txt && !(f > 0 && f <= 10000)){
+      alert(tr("A taxa de aquisição precisa estar entre 0 e 10000 quadros/s (ou em branco).","The acquisition rate must be between 0 and 10000 frames/s (or blank)."));
+      e.target.value = v.fps_aq ?? ""; return; }
+    const novo = txt ? f : null;
+    if (novo !== (v.fps_aq ?? null)){ v.fps_aq = novo; carregarVideo(v.arquivo); } };
   eN.onchange = () => { v.n = Math.max(2, Math.min(disponiveisVideo(), Math.round(+eN.value || 2))); mostrarVideo(); };
   $("#vExtrair").onclick = extrairVideo;
   $("#vCancelar").onclick = () => api("/api/video/cancelar", {});
@@ -397,7 +408,7 @@ function mostrarVideo(){
 async function extrairVideo(){
   const v = S.video;
   try {
-    const r = await api("/api/video/extrair", {arquivo:v.arquivo, inicio_s:v.inicio, fim_s:v.fim, n:v.n, pasta_trabalho:S.pos.trabalho || S.prefs.pasta_trabalho, ruptura_s:v.info.ruptura_s ?? null});
+    const r = await api("/api/video/extrair", {arquivo:v.arquivo, inicio_s:v.inicio, fim_s:v.fim, n:v.n, pasta_trabalho:S.pos.trabalho || S.prefs.pasta_trabalho, ruptura_s:v.info.ruptura_s ?? null, fps_aquisicao:v.fps_aq ?? null});
     $("#vExtrair").disabled = true; $("#vCancelar").hidden = false; const barra = $("#vBarra"); barra.hidden = false; barra.max = r.total;
     while (true){
       await new Promise(ok => setTimeout(ok, 400));
@@ -875,7 +886,7 @@ function mostrarSync(){
   el.innerHTML = `<div class="metodos" style="margin-bottom:6px">
       <div class="metodo" data-m="fratura"><div class="t">${tr("Pela fratura","By the fracture")} <span class="tag">${tr("recomendado","recommended")}</span></div><div class="d">${tr("Alinha o instante da fratura nas imagens com a queda final da carga.","Aligns the fracture instant in the images with the final load drop.")}</div></div>
       <div class="metodo" data-m="manual"><div class="t">${tr("Manual","Manual")}</div><div class="d">${tr("Você informa o tempo do primeiro quadro no relógio da máquina (por exemplo, quando a gravação termina antes da fratura).","You enter the time of the first frame on the machine clock (e.g. when the recording ends before fracture).")}</div></div></div>
-    ${vid ? `<div class="okbox">${tr(`Quadros extraídos do vídeo ${esc(vid.video.split(/[\\/]/).pop())} a ${num(vid.fps, 3)} quadros/s: os tempos de cada quadro vêm do vídeo.`, `Frames extracted from the video ${esc(vid.video.split(/[\\/]/).pop())} at ${num(vid.fps, 3)} frames/s: frame times come from the video.`)}</div>`
+    ${vid ? `<div class="okbox">${tr(`Quadros extraídos do vídeo ${esc(vid.video.split(/[\\/]/).pop())} a ${num(vid.fps, 3)} quadros/s: os tempos de cada quadro vêm do vídeo${vid.fps_aquisicao ? " (k/taxa de aquisição informada)" : ""}.`, `Frames extracted from the video ${esc(vid.video.split(/[\\/]/).pop())} at ${num(vid.fps, 3)} frames/s: frame times come from the video${vid.fps_aquisicao ? " (k/acquisition rate given)" : ""}.`)}</div>`
       : `<div class="campo"><div class="nome">${tr("Taxa de quadros da gravação","Recording frame rate")}</div><div class="pil"></div>
       <div class="ctl"><input type="number" id="ensFps" min="0.001" step="any" value="${E.fps ?? ""}"> ${tr("quadros/s","frames/s")}</div>
       <div class="ajuda">${tr("Quadros por segundo da câmera ou do vídeo de onde vieram as imagens da pasta (todas as imagens da pasta, inclusive as não analisadas, são consideradas quadros consecutivos).","Frames per second of the camera or video the folder images came from (all images in the folder, including those not analysed, are taken as consecutive frames).")}</div></div>`}

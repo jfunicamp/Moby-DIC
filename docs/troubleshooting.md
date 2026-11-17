@@ -39,6 +39,12 @@ map in step 4. Etched microstructures often work; smooth or bright phases do not
 a nominal rate (e.g. 100 frames/s) and empty frames in between. Moby-DIC reads the real frame times
 (*Rate: variable* in step 1); nothing needs to be entered.
 
+**Video times do not match the machine (the offset grows with the test duration).** The recorder's
+clock may disagree with the camera: if the synchronisation by fracture puts the start of the video
+many seconds before the machine, or a partial load drop lands earlier in the video than in the
+curve by a few percent of its distance to the fracture, enter the camera's *Acquisition rate* in
+step 1 (or `--acquisition-fps`) and extract again.
+
 **Holes at the edges of the maps.** Subsets near the specimen edges leave the speckle as the
 specimen contracts. Shrink the ROI by a few subset half-widths.
 
