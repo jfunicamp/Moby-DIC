@@ -86,3 +86,49 @@ def test_visualizador_sem_posicao_continua_funcionando():
         destino, _ = gerar(res, 8, 300, 70)
         dados = json.loads(re.search(r"const D = (\{.*?\});\n", destino.read_text(encoding="utf-8"), re.S).group(1))
         assert dados["ensaio"]["D"] is None
+
+
+def _dados(destino):
+    return json.loads(re.search(r"const D = (\{.*?\});\n", destino.read_text(encoding="utf-8"), re.S).group(1))
+
+
+def test_quadros_anteriores_ao_dic():
+    """DIC a partir do arquivo 21 (passo 4): os arquivos 1, 5, …, 17 entram como quadros só de imagem,
+    com tempo, tensão e posição da travessa pela mesma sincronização; os campos começam no 21."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        pasta = tmp / "imgs"
+        pasta.mkdir()
+        _sequencia(pasta)
+        _curva_com_posicao(tmp / "ensaio.csv")
+        c = ensaio.ler_curva(tmp / "ensaio.csv")
+        res = tmp / "res"
+        subsets.main(["--images", str(pasta), "--output", str(res), "--first", "21", "--last", "48", "--every", "4",
+                      "--roi", "40", "30", "280", "130", "--threads", "2"])
+        r = ensaio.aplicar(res, c, c["sugestao"], "fratura", FPS)
+        q = r["quadros"]
+        d = _dados(gerar(res, 8, 300, 70)[0])
+        nomes = sorted(p.name for p in pasta.iterdir())
+        assert d["pre"] == 5 and d["arquivos"][:5] == [nomes[k] for k in (0, 4, 8, 12, 16)], d["arquivos"][:6]
+        assert d["arquivos"][5:] == q["arquivo"] and d["n"] == 5 + len(q["arquivo"])
+        assert d["estado"][:5] == ["sem_dic"] * 5 and d["estado"][5] == "referencia"
+        ens = d["ensaio"]
+        assert len(ens["t"]) == len(ens["S"]) == len(ens["D"]) == d["n"]
+        # mesma regra de tempo (índice na pasta / fps) e a curva da máquina nesses tempos
+        t_esp = q["t_s"][0] + (np.array([0, 4, 8, 12, 16]) - 20) / FPS
+        assert np.allclose(ens["t"][:5], t_esp, atol=1e-9)
+        assert np.allclose(ens["D"][:5], V_TRAVESSA * t_esp, atol=2e-4)
+        s_esp = 1500 * (1 - np.exp(-t_esp / 10)) / 2.5
+        assert all(v is None for v, t in zip(ens["S"][:5], t_esp) if t < 0)
+        ok = t_esp >= 0
+        assert np.allclose(np.array(ens["S"][:5], dtype=float)[ok], s_esp[ok], rtol=2e-3)
+        assert ens["t"][5:] == q["t_s"]
+
+        # curva da máquina movida: usa a curva reduzida de ensaio.json (mesmos valores aqui)
+        (tmp / "ensaio.csv").unlink()
+        e2 = _dados(gerar(res, 8, 300, 70)[0])["ensaio"]
+        assert np.allclose(np.array(e2["S"][:5], dtype=float)[ok], s_esp[ok], rtol=5e-3)
+
+        # sem os quadros anteriores (opção), o visualizador fica como antes
+        d2 = _dados(gerar(res, 8, 300, 70, anteriores=False)[0])
+        assert d2["pre"] == 0 and d2["arquivos"] == q["arquivo"]

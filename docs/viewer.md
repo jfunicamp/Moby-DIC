@@ -28,6 +28,14 @@ in step 9 of the application.
 Maps are drawn on the **deformed configuration**: each value sits where the material point is in
 the current image.
 
+**Frames before the analysis.** When the analysis starts after the first image of the folder (for
+example, the surface only becomes trackable late in the test), the earlier images are included too,
+with the same step: the timeline starts at the first image, these frames show the image with *no
+DIC in this frame*, and the time, stress and crosshead position still follow the machine curve. A
+dotted line marks where the DIC starts in the test-curve charts. The extensometer and the
+frame-to-frame increments start from the first analysed frame. To leave these frames out, rebuild
+the viewer with `--no-pre-frames`.
+
 ## Fields
 
 | Group | Field | Unit |

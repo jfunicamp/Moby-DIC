@@ -12,6 +12,11 @@
   clock disagrees with the camera (a microscope AVI stored 4.78 frames/s for a 5 frames/s
   acquisition). `video_source.json` records the time base. Changing the rate does not read the video
   again (the motion curve is cached).
+- **Viewer: frames before the analysis.** When the analysis starts after the first image (for example
+  Nomarski videos, where the DIC only holds near maximum stress), the earlier images of the folder
+  are included as image-only frames: the microstructure, the time and the point on the machine curve
+  (stress vs time or vs crosshead position), with *no DIC in this frame* on the map and a *DIC starts*
+  line on the chart. `moby-dic viewer --no-pre-frames` leaves them out.
 
 ## 1.2.0 — 2026-11-16
 

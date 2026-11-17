@@ -31,7 +31,7 @@ from scipy import ndimage as nd
 from .i18n import idioma, t as tx
 
 from . import NOME, __version__
-from .imagens import imagem_exibicao, listar_imagens
+from .imagens import imagem_exibicao, legivel, listar_imagens
 from .subsets import preencher
 
 NIVEIS = 4094  # 12 bits: 0 = sem dado, 1..4095 = valor
@@ -70,7 +70,49 @@ def traduzir_metodo(metodo):
     return metodo
 
 
-def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", idioma="pt"):
+def _ensaio_anteriores(e, pre, primeiro, todas, t_por_nome):
+    """Tempo, carga, tensão e posição da travessa dos quadros anteriores ao DIC, pela mesma regra de
+    sincronização de ensaio.json (tempos do vídeo + deslocamento, ou índice na pasta / fps), na
+    curva completa da máquina (como ensaio.aplicar); se o arquivo da curva não estiver mais
+    disponível, na curva reduzida guardada em ensaio.json. None se não houver como dar tempo a
+    esses quadros."""
+    t1 = e["quadros"]["t_s"][0]
+    if e.get("fonte_tempo", "video" if primeiro in t_por_nome else "fps") == "video":
+        if not all(a in t_por_nome for a in pre + [primeiro]):
+            return None
+        t = np.array([t1 + t_por_nome[a] - t_por_nome[primeiro] for a in pre])
+    else:
+        fps = e.get("fps")
+        if not fps or fps <= 0:
+            return None
+        i1 = todas.index(primeiro)
+        t = np.array([t1 + (todas.index(a) - i1) / fps for a in pre])
+    r = e["reduzida"]
+    try:
+        from .ensaio import curva_validada, ler_curva
+        tc, Fc, Sc, Dc = curva_validada(ler_curva(e["curva"]["arquivo"]), e["colunas_idx"])
+        r = {"F": Fc, "S": Sc, "D": Dc}
+    except Exception:  # noqa: BLE001 — curva movida/apagada ou ensaio.json antigo
+        tc = np.asarray(r["t"], dtype=float)
+    dentro = (t >= tc[0]) & (t <= tc[-1])
+    t_frac = e.get("t_fratura_s")
+    apos = t > t_frac if t_frac is not None else np.zeros(len(t), bool)
+
+    def curva(chave, carrega):
+        if r.get(chave) is None:
+            return None
+        y = np.asarray(r[chave], dtype=float)      # None -> nan
+        v = np.where(dentro, np.interp(t, tc, y), np.nan)
+        if carrega:                   # depois da fratura a amostra não carrega
+            v[apos] = np.nan
+        return [None if not np.isfinite(x) else float(x) for x in v]
+
+    return {"t": t.tolist(), "F": curva("F", True), "S": curva("S", True), "D": curva("D", False)}
+
+
+def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", idioma="pt", anteriores=True):
+    """Gera visualizador.html. Com ``anteriores``, as imagens da pasta antes do primeiro quadro do DIC
+    (no mesmo passo) entram como quadros só de imagem: sem campos, mas com tempo e curva da máquina."""
     meta = json.loads((pasta / "parametros.json").read_text(encoding="utf-8"))
     escala = meta["escala_um_px"]
     z = carregar(pasta / "campos.npz")
@@ -98,6 +140,12 @@ def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", 
         valores = {k: a[:ate + 1] for k, a in valores.items()}
     ids = list(valores)
     n, ny, nx = val.shape
+    pasta_img = Path(meta["pasta_imagens"])
+    todas = [p.name for p in listar_imagens(pasta_img)] if pasta_img.is_dir() else []
+    pre = []
+    if anteriores and arquivos and arquivos[0] in todas:
+        i0, s = todas.index(arquivos[0]), max(1, int(meta.get("a_cada_n_imagens") or 1))
+        pre = [a for a in todas[i0 % s:i0:s] if legivel(pasta_img / a)]
     largura_img, altura_img = meta["tamanho_imagem_px"]
 
     # Grade de saída (px, origem inferior) cobrindo todas as posições válidas.
@@ -149,22 +197,13 @@ def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", 
             lo, hi = faixas[k]
             q = np.clip(np.round(1 + (g - lo) / (hi - lo) * NIVEIS), 1, NIVEIS + 1)
             quant[c, t] = np.where(ok & np.isfinite(g), q, 0)
-    delta = np.diff(quant, axis=1, prepend=0).astype("<i2").view("<u2")
-    planos = np.concatenate([(delta >> 8).astype(np.uint8).ravel(), (delta & 255).astype(np.uint8).ravel()])
-    blob = b64(gzip.compress(planos.tobytes(), compresslevel=9))
-    qt = np.round(np.nan_to_num(trilha) * 64).astype(np.int64)
-    dq = np.clip(np.diff(qt, axis=0, prepend=0), -32768, 32767).astype("<i2")
-    blob_trilhas = b64(gzip.compress(dq.tobytes() + mtr.tobytes(), compresslevel=9))
 
-    pasta_img = Path(meta["pasta_imagens"])
     por_nome = {p.name: p for p in listar_imagens(pasta_img)}
-    tempos = None                     # quadros extraídos de vídeo: tempo de cada quadro (frames.csv)
+    t_por_nome = {}                   # quadros extraídos de vídeo: tempo de cada quadro (frames.csv)
     if (pasta_img / "frames.csv").exists():
         import csv as _csv
         with (pasta_img / "frames.csv").open(encoding="utf-8") as f:
             t_por_nome = {r["arquivo"]: float(r["tempo_s"]) for r in _csv.DictReader(f)}
-        if all(a in t_por_nome for a in arquivos):
-            tempos = [t_por_nome[a] for a in arquivos]
     ensaio = None                     # correlação com a curva do ensaio de tração (ensaio.json)
     if (pasta / "ensaio.json").exists():
         e = json.loads((pasta / "ensaio.json").read_text(encoding="utf-8"))
@@ -176,6 +215,29 @@ def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", 
                       "uF": e["unidades"]["carga"], "uS": e["unidades"]["tensao"], "red": e["reduzida"],
                       "t_frac": e.get("t_fratura_s"), "t0": e.get("t_primeiro_s"), "metodo": e.get("metodo"),
                       "fps": e.get("fps"), "curva": Path(e["curva"]["arquivo"]).name}
+            if pre:
+                ens_pre = _ensaio_anteriores(e, pre, arquivos[0], todas, t_por_nome)
+                if ens_pre is None:       # sem como dar tempo a esses quadros: ficam de fora
+                    pre = []
+                else:
+                    for k, v in ens_pre.items():
+                        if ensaio[k] is not None:
+                            ensaio[k] = (v if v is not None else [None] * len(pre)) + ensaio[k]
+    tempos = [t_por_nome[a] for a in pre + arquivos] if all(a in t_por_nome for a in pre + arquivos) else None
+    npre = len(pre)
+    if npre:                          # quadros só de imagem: campos vazios, sem trajetórias
+        quant = np.concatenate([np.zeros((len(ids), npre, H, W), dtype=quant.dtype), quant], axis=1)
+        trilha = np.concatenate([np.zeros((npre,) + trilha.shape[1:]), trilha])
+        mtr = np.concatenate([np.zeros((npre,) + mtr.shape[1:], dtype=mtr.dtype), mtr])
+        arquivos = pre + arquivos
+        estados_z = ["sem_dic"] * npre + estados_z
+        n += npre
+    delta = np.diff(quant, axis=1, prepend=0).astype("<i2").view("<u2")
+    planos = np.concatenate([(delta >> 8).astype(np.uint8).ravel(), (delta & 255).astype(np.uint8).ravel()])
+    blob = b64(gzip.compress(planos.tobytes(), compresslevel=9))
+    qt = np.round(np.nan_to_num(trilha) * 64).astype(np.int64)
+    dq = np.clip(np.diff(qt, axis=0, prepend=0), -32768, 32767).astype("<i2")
+    blob_trilhas = b64(gzip.compress(dq.tobytes() + mtr.tobytes(), compresslevel=9))
     topo, base = int(altura_img - 1 - y1), int(altura_img - 1 - y0)
     esq, dir_ = int(x0), int(x1)
     fator = largura_fundo / (dir_ - esq + 1)
@@ -200,7 +262,7 @@ def gerar(pasta, celula, largura_fundo, qualidade, ate=None, cmap_padrao="jet", 
         "x1_mm": (x1 + 0.5 * celula) * fe, "y1_mm": (y1 + 0.5 * celula) * fe,
         "armazenados": [{"id": k, "lo": faixas[k][0], "hi": faixas[k][1]} for k in ids],
         "luts": luts, "cmaps": COLORMAPS, "cmap_padrao": cmap_padrao, "idioma_padrao": idioma,
-        "niveis": NIVEIS, "estado": estados_z,
+        "niveis": NIVEIS, "estado": estados_z, "pre": npre,
         "trilhas": {"nx": trilha.shape[2], "ny": trilha.shape[1], "x0": float(X0), "y0": float(Y0),
                     "dx": float(dX * sub), "dy": float(dY * sub)},
         "tempos": tempos,
@@ -390,6 +452,7 @@ const FUNDOS = __FUNDOS__;
 const BLOB = "__BLOB__";
 const TRILHAS = "__TRILHAS__";
 const N = D.n, W = D.W, H = D.H;
+const P0 = D.pre || 0;   // quadros só com imagem (antes do primeiro quadro do DIC); P0 = quadro inicial do DIC
 
 // ---------------------------------------------------------------- textos
 const TXT = {
@@ -406,7 +469,7 @@ const TXT = {
     nQuadros:n=>`${n} quadros`, gerando:(i,n)=>`Gerando ${i}/${n}…`, pronto:"Pronto.", cancelado:"Cancelado.", semVideo:"Este navegador não grava vídeo a partir do canvas.",
     sub:(m,e,n,w,h,c)=>`${m} · ${e} · ${n} quadros · grade de exibição ${w}×${h} (${c} px) · origem no canto inferior esquerdo, y para cima`,
     eixoX:"x", eixoY:"y", deformada:"configuração deformada", semCal:"sem calibração (pixels)",
-    estados:{referencia:"referência", convergiu:"convergiu", quadro_ruim:"quadro ruim", ponte:"ponte (referência após quadros ruins)", nao_convergiu:"não convergiu"},
+    estados:{referencia:"referência", convergiu:"convergiu", quadro_ruim:"quadro ruim", ponte:"ponte (referência após quadros ruins)", nao_convergiu:"não convergiu", sem_dic:"sem DIC (só imagem e curva da máquina)"},
     grupos:{desl:"Deslocamentos", def:"Deformações", der:"Grandezas derivadas", taxa:"Incrementos entre quadros", qual:"Qualidade da medição"},
     zoom:"Zoom", zoomMaisTip:"Aproximar (ou roda do mouse sobre um mapa)", zoomMenosTip:"Afastar", ajustar:"ajustar",
     ajustarTip:"Mostrar a região inteira (ou duplo clique no mapa)", dicaZoom:"Roda do mouse: zoom · arrastar: mover · duplo clique: ajustar.",
@@ -423,7 +486,7 @@ const TXT = {
     extGrafico:"Gráfico", gTempo:"ε × tempo", gQuadro:"ε × quadro", gTensao:"tensão × ε (ensaio)", gCarga:"carga × ε (ensaio)", gCurva:"curva do ensaio × tempo",
     gPosS:"tensão × posição da travessa", gPosF:"carga × posição da travessa", eixoD:u => `posição da travessa (${u})`, nD:"posição",
     eixoTm:"tempo do ensaio (s)", eixoS:u => `tensão (${u})`, eixoF:u => `carga (${u})`,
-    ensaioQ:(tt, v, u) => `t = ${tt} s` + (v ? ` · ${v} ${u}` : ""), apos:"após a fratura", imagens:"imagens analisadas"},
+    ensaioQ:(tt, v, u) => `t = ${tt} s` + (v ? ` · ${v} ${u}` : ""), apos:"após a fratura", imagens:"imagens", semDic:"sem DIC neste quadro", inicioDic:"início do DIC"},
   en: {idioma:"Language", layout:"Panels", anterior:"Previous frame (←)", proximo:"Next frame (→)", playTip:"Play/pause (space)",
     play:"▶ Play", pausa:"❚❚ Pause", velocidade:"Speed", qps:"frames/s", repetir:"loop", opacidade:"Opacity",
     imagem:"image", cores:"Colormap", inverter:"reverse", carregando:"Decompressing data…", falha:"Could not decompress the data: ",
@@ -437,7 +500,7 @@ const TXT = {
     nQuadros:n=>`${n} frames`, gerando:(i,n)=>`Rendering ${i}/${n}…`, pronto:"Done.", cancelado:"Cancelled.", semVideo:"This browser cannot record video from a canvas.",
     sub:(m,e,n,w,h,c)=>`${m} · ${e} · ${n} frames · display grid ${w}×${h} (${c} px) · origin at the lower-left corner, y up`,
     eixoX:"x", eixoY:"y", deformada:"deformed configuration", semCal:"uncalibrated (pixels)",
-    estados:{referencia:"reference", convergiu:"converged", quadro_ruim:"bad frame", ponte:"bridge (reference after bad frames)", nao_convergiu:"not converged"},
+    estados:{referencia:"reference", convergiu:"converged", quadro_ruim:"bad frame", ponte:"bridge (reference after bad frames)", nao_convergiu:"not converged", sem_dic:"no DIC (image and machine curve only)"},
     grupos:{desl:"Displacements", def:"Strains", der:"Derived quantities", taxa:"Frame-to-frame increments", qual:"Measurement quality"},
     zoom:"Zoom", zoomMaisTip:"Zoom in (or mouse wheel over a map)", zoomMenosTip:"Zoom out", ajustar:"fit",
     ajustarTip:"Show the whole region (or double-click the map)", dicaZoom:"Mouse wheel: zoom · drag: pan · double-click: fit.",
@@ -454,7 +517,7 @@ const TXT = {
     extGrafico:"Chart", gTempo:"ε vs time", gQuadro:"ε vs frame", gTensao:"stress vs ε (test)", gCarga:"load vs ε (test)", gCurva:"test curve vs time",
     gPosS:"stress vs crosshead position", gPosF:"load vs crosshead position", eixoD:u => `crosshead position (${u})`, nD:"position",
     eixoTm:"test time (s)", eixoS:u => `stress (${u})`, eixoF:u => `load (${u})`,
-    ensaioQ:(tt, v, u) => `t = ${tt} s` + (v ? ` · ${v} ${u}` : ""), apos:"after fracture", imagens:"analysed images"},
+    ensaioQ:(tt, v, u) => `t = ${tt} s` + (v ? ` · ${v} ${u}` : ""), apos:"after fracture", imagens:"images", semDic:"no DIC in this frame", inicioDic:"DIC starts"},
 };
 let L = "pt";
 try { L = localStorage.getItem("dic_idioma") || D.idioma_padrao || "pt"; } catch(e) { L = D.idioma_padrao || "pt"; }
@@ -540,7 +603,7 @@ function valor(k, tt, i){
   if (c.s) return bruto(c.id, tt, i);
   const v = {}; for (const d of c.dep){ v[d] = bruto(d, tt, i); if (v[d] !== v[d]) return NaN; }
   if (!c.inc) return c.f(v);
-  if (tt === 0) return 0;
+  if (tt <= P0) return 0;
   const a = {}; for (const d of c.dep){ a[d] = bruto(d, tt-1, i); if (a[d] !== a[d]) return NaN; }
   return c.f(v, a);
 }
@@ -550,8 +613,8 @@ const estat = new Array(NC);
 function estatisticas(k){
   if (estat[k]) return estat[k];
   const c = CAMPOS[k], vals = [];
-  const passoT = Math.max(1, Math.floor(N/25)), passoI = Math.max(1, Math.floor(W*H/4000));
-  const t0 = c.sim ? 0 : Math.floor(N/2);   // campos não simétricos: segunda metade (evita ruído inicial)
+  const passoT = Math.max(1, Math.floor((N - P0)/25)), passoI = Math.max(1, Math.floor(W*H/4000));
+  const t0 = c.sim ? P0 : P0 + Math.floor((N - P0)/2);   // campos não simétricos: segunda metade (evita ruído inicial)
   for (let tt = t0; tt < N; tt += passoT) for (let i = 0; i < W*H; i += passoI){ const x = valor(k, tt, i); if (x === x) vals.push(x); }
   vals.sort((a, b) => a - b);
   const p = q => vals.length ? vals[Math.min(vals.length-1, Math.floor(q*vals.length))] : 0;
@@ -627,7 +690,7 @@ function extDeCampos(campo){
   let ux = 1, uy = 0;
   if (EXT.A && EXT.B){ const c = Math.hypot(EXT.B[0] - EXT.A[0], EXT.B[1] - EXT.A[1]); if (c > 0){ ux = (EXT.B[0] - EXT.A[0])/c; uy = (EXT.B[1] - EXT.A[1])/c; } }
   const A = [xc - ux*L0/2, yc - uy*L0/2], B = [xc + ux*L0/2, yc + uy*L0/2];
-  if (!deslocPonto(A[0], A[1], 0) || !deslocPonto(B[0], B[1], 0)){ document.getElementById("extStatus").textContent = T("extFora"); return; }
+  if (!deslocPonto(A[0], A[1], P0) || !deslocPonto(B[0], B[1], P0)){ document.getElementById("extStatus").textContent = T("extFora"); return; }
   EXT.A = A; EXT.B = B; EXT.marcando = 0; calcularExt(); desenhar();
 }
 function sugerirExt(){
@@ -636,9 +699,9 @@ function sugerirExt(){
   const conta = new Int32Array(TR.nx*TR.ny);
   for (let tt = 0; tt < N; tt++) for (let i = 0; i < conta.length; i++) conta[i] += TRM[tt*conta.length + i];
   let melhor = -1, rMelhor = 0;
-  for (let r = 0; r < TR.ny; r++){ let s = 0; for (let c = 0; c < TR.nx; c++) s += conta[r*TR.nx + c] >= 0.95*N ? 1 : 0;
+  for (let r = 0; r < TR.ny; r++){ let s = 0; for (let c = 0; c < TR.nx; c++) s += conta[r*TR.nx + c] >= 0.95*(N - P0) ? 1 : 0;
     const pena = Math.abs(r - (TR.ny - 1)/2)/TR.ny; const nota = s*(1 - pena); if (nota > melhor){ melhor = nota; rMelhor = r; } }
-  const ok = []; for (let c = 0; c < TR.nx; c++) if (conta[rMelhor*TR.nx + c] >= 0.95*N) ok.push(c);
+  const ok = []; for (let c = 0; c < TR.nx; c++) if (conta[rMelhor*TR.nx + c] >= 0.95*(N - P0)) ok.push(c);
   if (ok.length < 4) return;
   const c1 = ok[0], c2 = ok[ok.length - 1], y = TR.y0 + rMelhor*TR.dy;
   EXT.A = [TR.x0 + (c1 + 0.25*(c2 - c1))*TR.dx, y]; EXT.B = [TR.x0 + (c1 + 0.75*(c2 - c1))*TR.dx, y];
@@ -646,7 +709,7 @@ function sugerirExt(){
 }
 function marcarExt(mm){
   const px = [mm.x/FE, mm.y/FE];
-  if (!deslocPonto(px[0], px[1], 0)){ document.getElementById("extStatus").textContent = T("extFora"); return; }
+  if (!deslocPonto(px[0], px[1], P0)){ document.getElementById("extStatus").textContent = T("extFora"); return; }
   if (EXT.marcando === 1){ EXT.A = px; EXT.B = null; EXT.serie = null; EXT.marcando = 2; }
   else { EXT.B = px; EXT.marcando = 0; calcularExt(); }
   desenhar();
@@ -705,6 +768,12 @@ function linhaGraf(ctx, g, xs, ys, cor, larg){
   xs.forEach((x, i) => { const y = ys[i]; if (!isFinite(x) || !isFinite(y)){ novo = true; return; }
     if (novo){ ctx.moveTo(g.X(x), g.Y(y)); novo = false; } else ctx.lineTo(g.X(x), g.Y(y)); }); ctx.stroke();
 }
+// linha vertical no primeiro quadro do DIC (só quando há quadros sem DIC antes dele)
+function inicioDicEm(ctx, g, xp, est){
+  if (!P0 || !isFinite(xp)) return;
+  ctx.save(); ctx.strokeStyle = est.muted; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(xp, g.mt); ctx.lineTo(xp, g.mt + g.ph); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = est.muted; ctx.font = "10.5px system-ui,sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText(T("inicioDic"), xp + 3, g.mt + g.ph - 3); ctx.restore();
+}
 function marcaGraf(ctx, g, x, y){ if (!isFinite(x) || !isFinite(y)) return; ctx.fillStyle = "#d33"; ctx.beginPath(); ctx.arc(g.X(x), g.Y(y), 4.5, 0, 7); ctx.fill(); }
 function opcoesGrafico(){
   const sel = document.getElementById("extGrafico"), atual = sel.value;
@@ -757,7 +826,8 @@ function grafExtEm(ctx, w, h, est, tt){
     ctx.fillStyle = est.muted; ctx.font = "10.5px system-ui,sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillText(T("imagens"), a + 4, g.mt + 3);
     if (ENS.t_frac !== null){ ctx.strokeStyle = "#c0392b"; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(g.X(ENS.t_frac), g.mt); ctx.lineTo(g.X(ENS.t_frac), g.mt + g.ph); ctx.stroke(); ctx.setLineDash([]); }
     linhaGraf(ctx, g, r.t, ys, est.muted, 1.2);
-    ctx.fillStyle = cor; tq2.forEach((x, i) => { const y = num_(ve[i]); if (isFinite(y)) ctx.fillRect(g.X(x) - 1.5, g.Y(y) - 1.5, 3, 3); });
+    ctx.fillStyle = cor; tq2.forEach((x, i) => { const y = num_(ve[i]); ctx.globalAlpha = i < P0 ? .35 : 1; if (isFinite(y)) ctx.fillRect(g.X(x) - 1.5, g.Y(y) - 1.5, 3, 3); }); ctx.globalAlpha = 1;
+    inicioDicEm(ctx, g, g.X(tq2[P0]), est);
     marcaGraf(ctx, g, tq2[t], num_(ve[t]));
     return;
   }
@@ -769,7 +839,8 @@ function grafExtEm(ctx, w, h, est, tt){
     if (!fx.length || !fy.length) return;
     const g = eixosGraf(ctx, w, h, [Math.min(0, ...fx), Math.max(...fx)], [Math.min(0, ...fy), Math.max(...fy)], T("eixoD")(ENS.uD || "mm"), yEns, est);
     linhaGraf(ctx, g, xsC, ysC, temRed ? est.muted : cor, temRed ? 1.2 : 2);
-    if (temRed){ ctx.fillStyle = cor; dq.forEach((x, i) => { const y = vq[i]; if (isFinite(x) && isFinite(y)) ctx.fillRect(g.X(x) - 1.5, g.Y(y) - 1.5, 3, 3); }); }
+    if (temRed){ ctx.fillStyle = cor; dq.forEach((x, i) => { const y = vq[i]; ctx.globalAlpha = i < P0 ? .35 : 1; if (isFinite(x) && isFinite(y)) ctx.fillRect(g.X(x) - 1.5, g.Y(y) - 1.5, 3, 3); }); ctx.globalAlpha = 1; }
+    if (isFinite(dq[P0])) inicioDicEm(ctx, g, g.X(dq[P0]), est);
     marcaGraf(ctx, g, dq[t], vq[t]);
     return;
   }
@@ -879,6 +950,9 @@ function desenharPainelEm(ctx, x, y, w, k, tt, est, im){
     ctx.fillRect(bx + bw, py, 3*fs, fs); ctx.fillText(fmtEsc(v, s.max - s.min), bx + bw + 5*fs, py); }
   ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText(unidade(c), bx + bw/2, Y + ph + 6*fs);
   desenharExtEm(ctx, {X, Y, pw, ph}, tt, fs);
+  if (tt < P0){ const txt = T("semDic"); ctx.font = `600 ${12*fs}px system-ui,sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    const tw = ctx.measureText(txt).width; ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillRect(X + 6*fs, Y + 6*fs, tw + 12*fs, 20*fs);
+    ctx.fillStyle = "#fff"; ctx.fillText(txt, X + 12*fs, Y + 10*fs); }
   return {h: mt + ph + mb, X, Y, pw, ph};
 }
 function estiloTela(){ const cs = getComputedStyle(document.body);
@@ -931,7 +1005,7 @@ function criarPainel(k0){
   p.mapa.addEventListener("wheel", ev => { if (!p.geo) return; ev.preventDefault();
     const mm = mmDoEvento(ev, p); zoomEm(ev.deltaY < 0 ? 1.25 : 0.8, mm.x, mm.y); }, {passive: false});
   p.mapa.addEventListener("pointerdown", ev => { if (!p.geo || ev.button !== 0) return;
-    if (EXT.marcando){ if (t !== 0) irPara(0); marcarExt(mmDoEvento(ev, p)); return; } p.mapa.setPointerCapture(ev.pointerId);
+    if (EXT.marcando){ if (t !== P0) irPara(P0); marcarExt(mmDoEvento(ev, p)); return; } p.mapa.setPointerCapture(ev.pointerId);
     arraste = {x: ev.clientX, y: ev.clientY, v: {...V}, p}; p.mapa.style.cursor = "grabbing"; });
   p.mapa.addEventListener("pointermove", ev => { if (!arraste || arraste.p !== p) return; const g = p.geo;
     const dx = (ev.clientX - arraste.x)/g.pw*(arraste.v.x1 - arraste.v.x0), dy = (ev.clientY - arraste.y)/g.ph*(arraste.v.y1 - arraste.v.y0);
@@ -1195,7 +1269,7 @@ function contarExport(){
   document.getElementById("btnVideo").onclick = exportarVideo;
   document.getElementById("btnCancelar").onclick = () => { cancelar = true; };
   document.getElementById("extAuto").onclick = sugerirExt;
-  document.getElementById("extMarcar").onclick = () => { parar(); EXT.marcando = 1; irPara(0); };
+  document.getElementById("extMarcar").onclick = () => { parar(); EXT.marcando = 1; irPara(P0); };
   document.getElementById("extLimpar").onclick = () => { EXT.A = EXT.B = EXT.serie = null; EXT.marcando = 0; extParaCampos(); desenhar(); };
   document.getElementById("extCSV").onclick = csvExt;
   document.getElementById("extComp").onchange = e => { EXT.comp = e.target.value; calcularExt(); desenhar(); };
@@ -1232,11 +1306,14 @@ def main(argv=None):
     ap.add_argument("--until-frame", "--ate-quadro", metavar="UNTIL_FRAME", dest="ate_quadro", type=int, help=tx("Último quadro incluído (desconsidera os seguintes).", "Last frame included (later frames are ignored)."))
     ap.add_argument("--cmap", choices=COLORMAPS, default="jet", help=tx("Colormap inicial (pode ser trocado na página).", "Initial colormap (can be changed on the page)."))
     ap.add_argument("--lang", "--idioma", dest="idioma", choices=["pt", "en"], default=idioma(), help=tx("Idioma inicial (pode ser trocado na página).", "Initial language (can be changed on the page)."))
+    ap.add_argument("--no-pre-frames", "--sem-quadros-anteriores", dest="anteriores", action="store_false",
+                    help=tx("Não incluir as imagens anteriores ao primeiro quadro do DIC (incluídas por padrão, só com imagem e curva da máquina).",
+                            "Do not include the images before the first DIC frame (included by default, with the image and machine curve only)."))
     ap.add_argument("--quality", "--qualidade", metavar="QUALITY", dest="qualidade", type=int, default=65, help=tx("Qualidade JPEG do fundo.", "JPEG quality of the background."))
     args = ap.parse_args(argv)
     for pasta in args.pastas:
         destino, mb = gerar(pasta, args.celula, args.largura_fundo, args.qualidade, args.ate_quadro,
-                            args.cmap, args.idioma)
+                            args.cmap, args.idioma, args.anteriores)
         print(f"{destino} ({mb:.1f} MB)")
 
 

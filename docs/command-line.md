@@ -59,11 +59,13 @@ y_image.
 ## viewer
 
 ```bash
-moby-dic viewer RESULT_FOLDER [--lang en] [--cmap jet] [--until-frame N] [--cell 6] [--background-width 640] [--quality 65]
+moby-dic viewer RESULT_FOLDER [--lang en] [--cmap jet] [--until-frame N] [--cell 6] [--background-width 640] [--quality 65] [--no-pre-frames]
 ```
 
 `--cell` is the display grid cell (px of the original image): smaller is sharper and larger.
-`--until-frame` drops the last frames (e.g. after fracture). Several folders can be given.
+`--until-frame` drops the last frames (e.g. after fracture). Images of the folder before the first analysed
+frame are included as image-only frames (state `sem_dic`, with the machine curve when the result is
+synchronised); `--no-pre-frames` leaves them out. Several folders can be given.
 
 ## example
 
