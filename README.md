@@ -115,6 +115,10 @@ tests/              synthetic accuracy tests
 empacotamento/      executable packaging (PyInstaller) and icon
 ```
 
+### Contributing
+
+Bug reports, questions and contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ### License and citation
 
 Moby-DIC is released under the [MIT License](LICENSE). Third-party components are listed in
