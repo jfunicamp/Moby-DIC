@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.1 — 2026-11-17
+
+Project infrastructure; the program is unchanged.
+
+- **Contributing:** `CONTRIBUTING.md` explains how to report problems, set up a development
+  environment, run the tests and propose changes, and how AI assistance is used in development.
+- **Continuous integration:** the test suite runs on Linux and Windows for every push and pull request.
+- **Citation:** complete `CITATION.cff` (authors, affiliation, repository, abstract); releases are
+  archived on Zenodo with a DOI.
+
 ## 1.3.0 — 2026-11-17
 
 - **Viewer: stress vs crosshead position.** New option in the chart menu: the whole machine curve

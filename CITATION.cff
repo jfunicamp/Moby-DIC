@@ -14,7 +14,7 @@ abstract: >-
   (IC-GN, ZNSSD, affine subsets, cubic B-spline interpolation). It synchronises the images with
   the tensile machine curve, provides a digital extensometer and writes a self-contained
   interactive viewer for every result. Guided interface in English and Portuguese.
-version: "1.3.0"
+version: "1.3.1"
 date-released: "2026-11-17"
 license: MIT
 keywords:

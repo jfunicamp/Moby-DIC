@@ -6,7 +6,7 @@
 Correlação digital de imagens 2D para ensaios mecânicos</p>
 
 <p align="center">
-Version 1.3.0 · MIT License · Windows executable or Python 3.10+ · English / Português
+Version 1.3.1 · MIT License · Windows executable or Python 3.10+ · English / Português
 </p>
 
 <p align="center"><a href="https://github.com/jfunicamp/Moby-DIC/actions/workflows/tests.yml"><img src="https://github.com/jfunicamp/Moby-DIC/actions/workflows/tests.yml/badge.svg" alt="tests"></a></p>
@@ -52,7 +52,7 @@ can share.
 
 ### Get started
 
-**Windows (no Python needed):** download and unzip `Moby-DIC-1.3.0-windows-x64.zip`, run
+**Windows (no Python needed):** download and unzip `Moby-DIC-1.3.1-windows-x64.zip`, run
 `Moby-DIC\Moby-DIC.exe`, choose your language, and click **Try an example**. The folder also
 contains `Moby-DIC-tutorial.mp4`, a 4-minute narrated walkthrough.
 
@@ -149,7 +149,7 @@ que pode ser compartilhado.
   zoom, animação e exportação de figuras, quadros e vídeos.
 - Interface, mensagens e figuras em **português ou inglês** (escolhido no primeiro uso).
 
-**Para começar no Windows:** descompacte `Moby-DIC-1.3.0-windows-x64.zip`, abra
+**Para começar no Windows:** descompacte `Moby-DIC-1.3.1-windows-x64.zip`, abra
 `Moby-DIC\Moby-DIC.exe`, escolha o idioma e clique em **Experimentar um exemplo**. O vídeo
 `Moby-DIC-tutorial.mp4` (em inglês) mostra uma análise completa em 4 minutos.
 
