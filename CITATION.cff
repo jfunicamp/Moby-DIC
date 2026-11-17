@@ -4,6 +4,16 @@ title: "Moby-DIC: 2D digital image correlation for mechanical testing"
 type: software
 authors:
   - given-names: "João Felipe"
+    family-names: "Queiroz Rodrigues"
+    affiliation: "Universidade Estadual de Campinas (UNICAMP)"
+repository-code: "https://github.com/jfunicamp/Moby-DIC"
+url: "https://github.com/jfunicamp/Moby-DIC"
+abstract: >-
+  Moby-DIC measures full-field displacements and strains on a specimen surface from the
+  image sequence or video of a mechanical test, using local subset digital image correlation
+  (IC-GN, ZNSSD, affine subsets, cubic B-spline interpolation). It synchronises the images with
+  the tensile machine curve, provides a digital extensometer and writes a self-contained
+  interactive viewer for every result. Guided interface in English and Portuguese.
 version: "1.3.0"
 date-released: "2026-11-17"
 license: MIT

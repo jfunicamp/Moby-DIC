@@ -10,7 +10,7 @@ license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [{ name = "João Felipe" }]
+authors = [{ name = "João Felipe Queiroz Rodrigues" }]
 keywords = ["digital image correlation", "DIC", "strain", "mechanical testing", "experimental mechanics"]
 classifiers = [
     "Programming Language :: Python :: 3",
