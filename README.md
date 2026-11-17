@@ -9,6 +9,8 @@ Correlação digital de imagens 2D para ensaios mecânicos</p>
 Version 1.3.0 · MIT License · Windows executable or Python 3.10+ · English / Português
 </p>
 
+<p align="center"><a href="https://github.com/jfunicamp/Moby-DIC/actions/workflows/tests.yml"><img src="https://github.com/jfunicamp/Moby-DIC/actions/workflows/tests.yml/badge.svg" alt="tests"></a></p>
+
 [English](#english) · [Português](#português)
 
 ---
