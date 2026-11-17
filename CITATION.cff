@@ -6,6 +6,7 @@ authors:
   - given-names: "João Felipe"
     family-names: "Queiroz Rodrigues"
     affiliation: "Universidade Estadual de Campinas (UNICAMP)"
+doi: "10.5281/zenodo.24322821"
 repository-code: "https://github.com/jfunicamp/Moby-DIC"
 url: "https://github.com/jfunicamp/Moby-DIC"
 abstract: >-
@@ -17,6 +18,13 @@ abstract: >-
 version: "1.3.1"
 date-released: "2026-11-17"
 license: MIT
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.24322821"
+    description: "Concept DOI (all versions; resolves to the latest)"
+  - type: doi
+    value: "10.5281/zenodo.24322822"
+    description: "Version 1.3.1"
 keywords:
   - digital image correlation
   - DIC

@@ -9,7 +9,8 @@ Correlação digital de imagens 2D para ensaios mecânicos</p>
 Version 1.3.1 · MIT License · Windows executable or Python 3.10+ · English / Português
 </p>
 
-<p align="center"><a href="https://github.com/jfunicamp/Moby-DIC/actions/workflows/tests.yml"><img src="https://github.com/jfunicamp/Moby-DIC/actions/workflows/tests.yml/badge.svg" alt="tests"></a></p>
+<p align="center"><a href="https://github.com/jfunicamp/Moby-DIC/actions/workflows/tests.yml"><img src="https://github.com/jfunicamp/Moby-DIC/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
+<a href="https://doi.org/10.5281/zenodo.24322821"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.24322821.svg" alt="DOI"></a></p>
 
 [English](#english) · [Português](#português)
 
@@ -125,7 +126,9 @@ Bug reports, questions and contributions are welcome: see [CONTRIBUTING.md](CONT
 
 Moby-DIC is released under the [MIT License](LICENSE). Third-party components are listed in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). If Moby-DIC contributes to a publication, please
-cite it as described in [CITATION.cff](CITATION.cff).
+cite it as described in [CITATION.cff](CITATION.cff)
+(DOI [10.5281/zenodo.24322821](https://doi.org/10.5281/zenodo.24322821), which always points to the
+latest version; each release also has its own DOI on Zenodo).
 
 ---
 
